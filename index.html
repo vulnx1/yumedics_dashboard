@@ -1,5 +1,4 @@
 <!DOCTYPE html>
-
 <html lang="en">
 <head>
 <meta charset="UTF-8"/>
@@ -315,7 +314,8 @@ const saveI=()=>localStorage.setItem(IK,JSON.stringify(INV));
 let S=loadS(), INV=loadI();
 S.products.forEach(p=>{if(!p.batches)p.batches=[];if(p.b!==undefined&&p.m!==undefined){p.stock=(p.b||0)+(p.m||0);delete p.b;delete p.m;}});
 
-let tab='stock',expId=null,srch='',filt='all',editRL=null,lastSync=null,syncing=false;
+let tab='stock',expId=null,qLoc='b',srch='',filt='all',editRL=null,lastSync=null,syncing=false,openInvIdx=null,invSrch='';
+
 
 // ══════════════════════════════════════════
 //  LIVE SYNC FROM GOOGLE SHEETS
@@ -340,7 +340,6 @@ async function syncFromSheet() {
         const size = row["Size"] || row.Size || "";
         const stock = parseInt(row["Current Stock"] || row["current_stock"] || 0);
         const reorder = parseInt(row["Reorder Level"] || row["reorder_level"] || 30);
-        const batchInfo = row["Batches"] || "";
 
         const existing = S.products.find(p =>
           p.name.toUpperCase().includes(name.toUpperCase()) ||
@@ -622,15 +621,59 @@ function renderAlerts(){
 }
 
 function renderInvoices(){
-  if(!INV.length)return`<div class="empty"><div class="ei">🧾</div><div class="et">No Dispatches Yet</div><div class="es">Invoices sync automatically from Gmail every 15 minutes.</div><button class="refresh-btn" onclick="syncFromSheet()">🔄 Sync Now</button></div>`;
-  let h=renderSyncBar()+`<div style="font-size:11px;color:var(--ink3);font-weight:700;letter-spacing:.5px;text-transform:uppercase;margin-bottom:12px">${INV.length} invoice${INV.length!==1?'s':''} recorded</div>`;
-  INV.forEach(inv=>{
-    const sale=inv.transaction_type==='SALE';
-    h+=`<div class="inv-card">
-      <div class="inv-hd">
-        <div><div class="inv-no">${inv.invoice_no}</div><div class="inv-dt">${inv.invoice_date} · ${fmtDt(inv.processed_at)}</div></div>
-        <span class="${sale?'badge-sale':'badge-pur'}">${inv.transaction_type}</span>
+  if(!INV.length)return`<div class="empty"><div class="ei">📄</div><div class="et">No Dispatches Yet</div><div class="es">Invoices sync automatically from Gmail every 15 minutes.</div><button class="refresh-btn" onclick="syncFromSheet()">🔄 Sync Now</button></div>`;
+
+  // Filter invoices by search query
+  let filtered = INV;
+  if (invSrch.trim()) {
+    const q = invSrch.toLowerCase();
+    filtered = INV.filter(inv =>
+      (inv.invoice_no || '').toLowerCase().includes(q) ||
+      (inv.from || '').toLowerCase().includes(q) ||
+      (inv.to || '').toLowerCase().includes(q) ||
+      (inv.invoice_date || '').toLowerCase().includes(q)
+    );
+  }
+
+  let h = renderSyncBar();
+
+  // Search bar at top
+  h += `<div class="search-wrap" style="margin-bottom:12px">
+    <span class="s-icon">🔍</span>
+    <input class="search-inp" placeholder="Search invoice number, party, or date…" value="${invSrch.replace(/"/g,'&quot;')}" oninput="setInvSrch(this.value)"/>
+    ${invSrch?`<button class="clear-x" onclick="setInvSrch('')">✕</button>`:''}
+  </div>`;
+
+  // Result count
+  h += `<div style="font-size:11px;color:var(--ink3);font-weight:700;letter-spacing:.5px;text-transform:uppercase;margin-bottom:12px">${filtered.length} of ${INV.length} invoice${INV.length!==1?'s':''} · Tap to view details</div>`;
+
+  // No results
+  if (filtered.length === 0) {
+    h += `<div class="empty"><div class="ei">🔍</div><div class="et">No invoices found</div><div class="es">Try a different search term</div></div>`;
+    return h;
+  }
+
+  // Render each invoice card
+  filtered.forEach((inv, idx) => {
+    const sale = inv.transaction_type === 'SALE';
+    const isOpen = openInvIdx === idx;
+    const party = sale ? (inv.to || '—') : (inv.from || '—');
+
+    h += `<div class="inv-card" style="${isOpen ? 'border-color:rgba(212,168,67,0.4)' : ''}">
+      <div class="inv-hd" style="cursor:pointer;user-select:none" onclick="toggleInv(${idx})">
+        <div style="display:flex;align-items:center;gap:10px;flex:1;min-width:0">
+          <span style="font-size:16px">📄</span>
+          <div style="flex:1;min-width:0">
+            <div class="inv-no">${inv.invoice_no}</div>
+            <div class="inv-dt">${inv.invoice_date} · ${party}</div>
+          </div>
+        </div>
+        <div style="display:flex;align-items:center;gap:8px;flex-shrink:0">
+          <span class="${sale?'badge-sale':'badge-pur'}">${inv.transaction_type}</span>
+          <span style="font-size:10px;color:var(--ink3);transition:transform .2s;display:inline-block;transform:${isOpen?'rotate(180deg)':'rotate(0deg)'}">▼</span>
+        </div>
       </div>
+      ${isOpen ? `
       <div class="inv-route">
         <div><div class="inv-party">${inv.from||'—'}</div><div class="inv-party-tag">FROM</div></div>
         <div class="inv-arrow">———▶</div>
@@ -645,8 +688,10 @@ function renderInvoices(){
           </div>
         </div>`).join('')}
       </div>
+      ` : ''}
     </div>`;
   });
+
   return h;
 }
 
@@ -665,6 +710,8 @@ function renderSettings(){
 }
 
 function toggleExp(id){expId=expId===id?null:id;render();}
+function toggleInv(idx){openInvIdx=openInvIdx===idx?null:idx;render();}
+function setInvSrch(v){invSrch=v;openInvIdx=null;render();}
 function setSrch(v){srch=v;render();}
 function setFilt(v){filt=v;render();}
 function startRL(id){editRL=id;render();setTimeout(()=>{const el=document.getElementById('rl-inp-'+id);if(el){el.focus();el.select();}},50);}
