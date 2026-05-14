@@ -8,6 +8,8 @@
 <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet"/>
 <!-- Supabase SDK -->
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<!-- SheetJS for Excel export -->
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <style>
 :root{
   --bg:#0A0A0F;--bg2:#111118;--surface:#16161F;--surface2:#1E1E2A;--surface3:#252535;
@@ -41,6 +43,9 @@ button{cursor:pointer}
 .urgent-pill{background:var(--red-bg);border:1px solid rgba(239,68,68,0.25);color:var(--red);font-size:10px;font-weight:700;padding:4px 10px;border-radius:20px;display:none;animation:pulse-r 2s infinite}
 @keyframes pulse-r{0%,100%{opacity:1}50%{opacity:.55}}
 #date-chip{font-size:10px;color:var(--ink3);font-family:'JetBrains Mono',monospace;background:var(--surface);padding:4px 10px;border-radius:20px;border:1px solid var(--border)}
+#export-btn{background:linear-gradient(135deg,var(--green),#16a34a);color:#fff;border:none;border-radius:20px;padding:5px 11px;font-size:10px;font-weight:800;letter-spacing:.5px;display:flex;align-items:center;gap:4px;transition:transform .15s,box-shadow .15s}
+#export-btn:active{transform:scale(.92)}
+#export-btn:hover{box-shadow:0 2px 12px rgba(34,197,94,0.35)}
 
 /* ── Tabs ── */
 #tabs{display:flex;overflow-x:auto;padding-bottom:0}
@@ -249,6 +254,7 @@ button{cursor:pointer}
       </div>
       <div id="header-meta">
         <span id="urgent-pill" class="urgent-pill"></span>
+        <button id="export-btn" onclick="exportToExcel()" title="Download Excel"><span>📊</span><span>EXPORT</span></button>
         <span id="date-chip"></span>
       </div>
     </div>
@@ -290,14 +296,6 @@ button{cursor:pointer}
 <script>
 // ══════════════════════════════════════════
 //  SUPABASE CONFIG
-//  Tables needed in your Supabase project:
-//    products  → id(int), name(text), pack(text), stock(int),
-//                reorder_level(int), batches(jsonb)
-//    invoices  → invoice_no(text PK), invoice_date(text),
-//                transaction_type(text), from(text), to(text),
-//                products(jsonb)
-//    stock_log → id(bigint), pid(int), product(text), change(text),
-//                new_qty(int), note(text), ts(timestamptz), auto(bool)
 // ══════════════════════════════════════════
 const SUPABASE_URL      = "https://xsctbtlhxycpcdtosunf.supabase.co";
 const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhzY3RidGxoeHljcGNkdG9zdW5mIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg3NTk0ODksImV4cCI6MjA5NDMzNTQ4OX0._G1hQit4VMjo-w40r83TsTs6Y6TlxLM3E1VboCpwFl0";
@@ -350,7 +348,6 @@ const loadI = () => { try { const r = localStorage.getItem(IK); if (r) return JS
 const saveI = () => localStorage.setItem(IK, JSON.stringify(INV));
 
 let S = loadS(), INV = loadI();
-// Migrate old shape
 S.products.forEach(p => {
   if (!p.batches) p.batches = [];
   if (p.b !== undefined) { p.stock = (p.b||0) + (p.m||0); delete p.b; delete p.m; }
@@ -386,6 +383,100 @@ const toast = (msg, type='ok') => {
 };
 
 // ══════════════════════════════════════════
+//  EXCEL EXPORT — 3 sheets in one .xlsx
+//  Sheet 1: Stock (with status, batches summary)
+//  Sheet 2: Invoices (one row per product line)
+//  Sheet 3: Activity Log (all movements)
+// ══════════════════════════════════════════
+function exportToExcel() {
+  try {
+    if (typeof XLSX === 'undefined') { toast('Excel library not loaded', 'error'); return; }
+    toast('Building Excel file…', 'info');
+
+    const today = new Date().toISOString().slice(0, 10);
+    const wb = XLSX.utils.book_new();
+
+    // ── SHEET 1: STOCK ──────────────────────
+    const stockRows = S.products.map(enrich).map(p => {
+      const batchSummary = (p.batches||[]).map(b => `${b.batch_no} (${b.qty}u, exp ${b.exp||'—'})`).join(' | ');
+      return {
+        'Product ID':       p.id,
+        'Product Name':     p.name,
+        'Pack / Size':      p.pack,
+        'Current Stock':    p.total,
+        'Reorder Level':    p.r,
+        'Shortfall':        Math.max(0, p.r - p.total),
+        'Status':           sLabel(p.st),
+        'Batches Count':    (p.batches||[]).length,
+        'Batches Detail':   batchSummary || '—',
+      };
+    });
+    const ws1 = XLSX.utils.json_to_sheet(stockRows);
+    ws1['!cols'] = [{wch:10},{wch:38},{wch:14},{wch:14},{wch:14},{wch:12},{wch:14},{wch:14},{wch:60}];
+    XLSX.utils.book_append_sheet(wb, ws1, 'Stock');
+
+    // ── SHEET 2: INVOICES (flattened) ───────
+    const invoiceRows = [];
+    INV.forEach(inv => {
+      if (!(inv.products||[]).length) {
+        invoiceRows.push({
+          'Invoice No':       inv.invoice_no || '',
+          'Date':             inv.invoice_date || '',
+          'Type':             inv.transaction_type || '',
+          'From':             inv.from || '',
+          'To':               inv.to || '',
+          'Product':          '',
+          'Size':             '',
+          'Quantity':         '',
+          'Batch No':         '',
+        });
+      } else {
+        inv.products.forEach(p => {
+          invoiceRows.push({
+            'Invoice No':     inv.invoice_no || '',
+            'Date':           inv.invoice_date || '',
+            'Type':           inv.transaction_type || '',
+            'From':           inv.from || '',
+            'To':             inv.to || '',
+            'Product':        p.name || '',
+            'Size':           p.size || '',
+            'Quantity':       (inv.transaction_type==='SALE'?-1:1) * (p.quantity || 0),
+            'Batch No':       p.batch_no || '',
+          });
+        });
+      }
+    });
+    const ws2 = invoiceRows.length
+      ? XLSX.utils.json_to_sheet(invoiceRows)
+      : XLSX.utils.aoa_to_sheet([['No invoices yet']]);
+    ws2['!cols'] = [{wch:14},{wch:12},{wch:10},{wch:24},{wch:24},{wch:32},{wch:12},{wch:10},{wch:14}];
+    XLSX.utils.book_append_sheet(wb, ws2, 'Invoices');
+
+    // ── SHEET 3: LOG ────────────────────────
+    const logRows = (S.log||[]).map(e => ({
+      'Date / Time':     new Date(e.ts).toLocaleString('en-IN'),
+      'Product':         e.product || '',
+      'Change':          e.change || '',
+      'New Stock':       e.newQty ?? '',
+      'Source':          e.auto ? 'Auto (Invoice)' : 'Manual',
+      'Note':            e.note || '',
+    }));
+    const ws3 = logRows.length
+      ? XLSX.utils.json_to_sheet(logRows)
+      : XLSX.utils.aoa_to_sheet([['No activity logged yet']]);
+    ws3['!cols'] = [{wch:20},{wch:36},{wch:10},{wch:12},{wch:18},{wch:50}];
+    XLSX.utils.book_append_sheet(wb, ws3, 'Activity Log');
+
+    // ── WRITE FILE ──────────────────────────
+    XLSX.writeFile(wb, `Yumedics_Export_${today}.xlsx`);
+    toast(`✅ Exported ${stockRows.length} products · ${invoiceRows.length} lines · ${logRows.length} log entries`);
+  } catch (err) {
+    console.error('Export error:', err);
+    toast('Export failed — check console', 'error');
+  }
+}
+
+// ══════════════════════════════════════════
 //  SUPABASE: SYNC (pull)
 // ══════════════════════════════════════════
 async function syncFromSupabase() {
@@ -394,7 +485,6 @@ async function syncFromSupabase() {
   updateSyncBar('syncing');
   toast('Syncing from Supabase…', 'info');
   try {
-    // Products
     const { data: prods, error: pE } = await sb.from('products').select('*').order('id');
     if (pE) throw pE;
     if (prods?.length) {
@@ -410,7 +500,6 @@ async function syncFromSupabase() {
       });
     }
 
-    // Invoices
     const { data: invs, error: iE } = await sb.from('invoices').select('*').order('invoice_date',{ascending:false}).limit(200);
     if (iE) throw iE;
     if (invs?.length) {
@@ -419,7 +508,6 @@ async function syncFromSupabase() {
       saveI();
     }
 
-    // Stock log
     const { data: logs, error: lE } = await sb.from('stock_log').select('*').order('ts',{ascending:false}).limit(200);
     if (!lE && logs?.length) {
       logs.forEach(e => {
@@ -444,11 +532,8 @@ async function syncFromSupabase() {
   }
 }
 
-// SUPABASE: Push product (upsert)
 const pushProduct = p => sb.from('products').upsert({ id:p.id, name:p.name, pack:p.pack, stock:p.stock, reorder_level:p.r, batches:p.batches }, {onConflict:'id'}).then(({error})=>{ if(error) console.warn('push product:', error); });
-
-// SUPABASE: Push log entry (insert)
-const pushLog = e => sb.from('stock_log').insert({ id:e.id, pid:e.pid, product:e.product, change:e.change, new_qty:e.newQty, note:e.note, ts:new Date(e.ts).toISOString(), auto:e.auto }).then(({error})=>{ if(error) console.warn('push log:', error); });
+const pushLog     = e => sb.from('stock_log').insert({ id:e.id, pid:e.pid, product:e.product, change:e.change, new_qty:e.newQty, note:e.note, ts:new Date(e.ts).toISOString(), auto:e.auto }).then(({error})=>{ if(error) console.warn('push log:', error); });
 
 function updateSyncBar(state) {
   const led = document.getElementById('sync-led'), lbl = document.getElementById('sync-lbl'), time = document.getElementById('sync-time');
@@ -458,11 +543,10 @@ function updateSyncBar(state) {
   time.textContent = lastSync ? fmtDt(lastSync) : 'Never synced';
 }
 
-// Auto-sync every 5 minutes
 setInterval(syncFromSupabase, 5 * 60 * 1000);
 
 // ══════════════════════════════════════════
-//  STOCK UPDATE (with Supabase push)
+//  STOCK UPDATE
 // ══════════════════════════════════════════
 async function doUpdate(id, type) {
   const g    = k => document.getElementById(`${k}-${id}`)?.value.trim();
@@ -473,7 +557,7 @@ async function doUpdate(id, type) {
   if (!p.batches) p.batches = [];
 
   const batchNo = g('batch-no-inp'), mfgDate = g('mfg-inp'), expDate = g('exp-inp');
-  const party   = g('party-inp'),   note    = g('note-inp');
+  const party   = g('party-inp'),    note    = g('note-inp');
   const delta   = type === 'in' ? qty : -qty;
   p.stock = Math.max(0, (p.stock||0) + delta);
 
@@ -503,9 +587,6 @@ async function doUpdate(id, type) {
   pushLog(entry);
 }
 
-// ══════════════════════════════════════════
-//  REORDER LEVEL SAVE
-// ══════════════════════════════════════════
 function saveRL(id) {
   const v = parseInt(document.getElementById(`rl-inp-${id}`)?.value);
   if (isNaN(v) || v < 0) { toast('Invalid', 'error'); return; }
@@ -514,9 +595,6 @@ function saveRL(id) {
   pushProduct(p);
 }
 
-// ══════════════════════════════════════════
-//  ADD PRODUCT
-// ══════════════════════════════════════════
 function saveNewProd() {
   const name = document.getElementById('m-name').value.trim().toUpperCase();
   if (!name) { toast('Name required', 'error'); return; }
@@ -570,7 +648,6 @@ const renderSyncBar = () => `<div class="sync-bar">
   <button onclick="syncFromSupabase()" style="border:none;background:var(--gold-bg);color:var(--gold);border-radius:8px;padding:4px 10px;font-size:10px;font-weight:800;margin-left:4px">SYNC</button>
 </div>`;
 
-// ── STOCK ──
 function renderStock() {
   const en   = S.products.map(enrich);
   let list   = filt!=='all' ? en.filter(p=>p.st===filt) : [...en];
@@ -643,7 +720,6 @@ function renderStock() {
   ${cards||`<div class="empty"><div class="ei">🔍</div><div class="et">Nothing found</div></div>`}`;
 }
 
-// ── ALERTS ──
 function renderAlerts() {
   const alerts = S.products.map(enrich).filter(p=>p.st!=='ok').sort((a,b)=>({out:0,crit:1,low:2}[a.st]-{out:0,crit:1,low:2}[b.st]||a.total-b.total));
   if (!alerts.length) return `<div class="empty"><div class="ei">🎉</div><div class="et">All Stock Healthy</div><div class="es">No reordering needed right now.</div></div>`;
@@ -664,7 +740,6 @@ function renderAlerts() {
       }).join('');
 }
 
-// ── INVOICES / DISPATCH ──
 function renderInvoices() {
   if (!INV.length) return `<div class="empty"><div class="ei">📄</div><div class="et">No Dispatches Yet</div><div class="es">Invoices sync automatically from Supabase.</div><button class="refresh-btn" onclick="syncFromSupabase()">🔄 Sync Now</button></div>`;
 
@@ -712,7 +787,6 @@ function renderInvoices() {
   return h;
 }
 
-// ── LOG ──
 function renderLog() {
   if (!S.log.length) return `<div class="empty"><div class="ei">📋</div><div class="et">No Activity</div><div class="es">All stock movements will appear here.</div></div>`;
   return `<div style="font-size:11px;color:var(--ink3);font-weight:700;letter-spacing:.5px;text-transform:uppercase;margin-bottom:12px">${S.log.length} movements</div>`
@@ -726,7 +800,6 @@ function renderLog() {
       }).join('');
 }
 
-// ── SETTINGS ──
 function renderSettings() {
   return `<div class="settings-note">⏱️ Lead time: 1.5 months. Reorder = 1.5 months sales + buffer.</div>`
     + S.products.map(enrich).map(p => {
