@@ -1,11 +1,14 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
+  
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no"/>
 <title>Yumedics · Command Center</title>
 <link rel="preconnect" href="https://fonts.googleapis.com"/>
 <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet"/>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js"></script>
+<script src="https://cdn.sheetjs.com/xlsx-latest/package/dist/xlsx.full.min.js"></script>
 <style>
 :root{
   --bg:#0A0A0F;--bg2:#111118;--surface:#16161F;--surface2:#1E1E2A;--surface3:#252535;
@@ -211,7 +214,10 @@ button{cursor:pointer}
 .fade-up{animation:fadeUp .2s ease-out both}
 </style>
 </head>
+
 <body>
+
+  
 
 <div id="app">
   <div id="header">
@@ -260,13 +266,30 @@ button{cursor:pointer}
 <div id="toast"></div>
 
 <script>
+
+  const SUPABASE_URL = "https://xsctbtlhxycpcdtosunf.supabase.co/";
+const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhzY3RidGxoeHljcGNkdG9zdW5mIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg3NTk0ODksImV4cCI6MjA5NDMzNTQ4OX0._G1hQit4VMjo-w40r83TsTs6Y6TlxLM3E1VboCpwFl0";
+
+const supabase = window.supabase.createClient(
+  SUPABASE_URL,
+  SUPABASE_ANON_KEY
+);
 // ══════════════════════════════════════════
-//  WEB APP URL — Your Google Apps Script
+//  STATE
 // ══════════════════════════════════════════
-const WEB_APP_URL = "https://script.google.com/macros/s/AKfycbw0-JUj7KZfCOk8TeMc0dfM2s8nS4RqtRm2Gs9NZ_iGU09y9hnw2zVx9jZNbhtX2EPSIg/exec";
+const SK='ymd_v7_final', IK='ymd_inv_v4', LK='ymd_log_v1';
+const loadS=()=>{try{const r=localStorage.getItem(SK);if(r)return JSON.parse(r);}catch(e){}return{products:JSON.parse(JSON.stringify(DEFAULTS)),log:[]};};
+const saveS=()=>localStorage.setItem(SK,JSON.stringify(S));
+const loadI=()=>{try{const r=localStorage.getItem(IK);if(r)return JSON.parse(r);}catch(e){}return[];};
+const saveI=()=>localStorage.setItem(IK,JSON.stringify(INV));
+
+let S=loadS(), INV=loadI();
+S.products.forEach(p=>{if(!p.batches)p.batches=[];if(p.b!==undefined&&p.m!==undefined){p.stock=(p.b||0)+(p.m||0);delete p.b;delete p.m;}});
+
+let tab='stock',expId=null,qLoc='b',srch='',filt='all',editRL=null,lastSync=null,syncing=false,openInvIdx=null,invSrch='';
 
 // ══════════════════════════════════════════
-//  DEFAULT PRODUCT DATA (31 SKUs)
+//  SUPABASE SYNC & SEEDING
 // ══════════════════════════════════════════
 const DEFAULTS=[
   {id:1, name:"YUMEDICS KITS",                    pack:"—",       stock:160, r:300,  batches:[]},
@@ -302,76 +325,77 @@ const DEFAULTS=[
   {id:31,name:"HAIRMEDICS BIOTIN 30 TAB",         pack:"MRP 660", stock:1056,r:1000, batches:[]},
 ];
 
-// ══════════════════════════════════════════
-//  STATE
-// ══════════════════════════════════════════
-const SK='ymd_v7_final', IK='ymd_inv_v4', LK='ymd_log_v1';
-const loadS=()=>{try{const r=localStorage.getItem(SK);if(r)return JSON.parse(r);}catch(e){}return{products:JSON.parse(JSON.stringify(DEFAULTS)),log:[]};};
-const saveS=()=>localStorage.setItem(SK,JSON.stringify(S));
-const loadI=()=>{try{const r=localStorage.getItem(IK);if(r)return JSON.parse(r);}catch(e){}return[];};
-const saveI=()=>localStorage.setItem(IK,JSON.stringify(INV));
-
-let S=loadS(), INV=loadI();
-S.products.forEach(p=>{if(!p.batches)p.batches=[];if(p.b!==undefined&&p.m!==undefined){p.stock=(p.b||0)+(p.m||0);delete p.b;delete p.m;}});
-
-let tab='stock',expId=null,qLoc='b',srch='',filt='all',editRL=null,lastSync=null,syncing=false,openInvIdx=null,invSrch='';
-
-
-// ══════════════════════════════════════════
-//  LIVE SYNC FROM GOOGLE SHEETS
-// ══════════════════════════════════════════
-async function syncFromSheet() {
+async function syncFromSupabase() {
   if (syncing) return;
   syncing = true;
   updateSyncBar('syncing');
-  toast('Syncing from database…', 'info');
+  toast('Syncing with Supabase…', 'info');
 
   try {
-    const res = await fetch(WEB_APP_URL);
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    const data = await res.json();
-
-    if (data.error) throw new Error(data.error);
-
-    // Merge live products from sheet into local state
-    if (data.products && data.products.length > 0) {
-      data.products.forEach(row => {
-        const name = row["Product"] || row.Product || "";
-        const size = row["Size"] || row.Size || "";
-        const stock = parseInt(row["Current Stock"] || row["current_stock"] || 0);
-        const reorder = parseInt(row["Reorder Level"] || row["reorder_level"] || 30);
-
-        const existing = S.products.find(p =>
-          p.name.toUpperCase().includes(name.toUpperCase()) ||
-          name.toUpperCase().includes(p.name.toUpperCase())
-        );
-
-        if (existing) {
-          existing.stock = stock;
-          existing.r = reorder;
-        }
-      });
+    // 1. Fetch Products
+    const { data: pData, error: pErr } = await supabase.from('products').select('*');
+    if (pErr) throw pErr;
+    
+    if (!pData || pData.length === 0) {
+      // AUTO-SEED if database is empty
+      toast('Database empty, seeding defaults…', 'info');
+      const seedData = DEFAULTS.map(p => ({
+        id: p.id,
+        name: p.name,
+        pack: p.pack,
+        stock: p.stock,
+        reorder_level: p.r,
+        batches: p.batches
+      }));
+      const { error: sErr } = await supabase.from('products').insert(seedData);
+      if (sErr) throw sErr;
+      S.products = JSON.parse(JSON.stringify(DEFAULTS));
+    } else {
+      // Map Supabase 'reorder_level' back to local 'r'
+      S.products = pData.map(p => ({
+        ...p,
+        r: p.reorder_level !== undefined ? p.reorder_level : (p.r || 30)
+      })).sort((a,b) => a.id - b.id);
     }
+    saveS();
 
-    // Load invoices from sheet
-    if (data.invoices && data.invoices.length > 0) {
-      data.invoices.forEach(inv => {
-        if (!INV.find(i => i.invoice_no === inv.invoice_no)) {
-          INV.unshift(inv);
-        }
-      });
-      if (INV.length > 200) INV = INV.slice(0, 200);
+    // 2. Fetch Invoices
+    const { data: iData, error: iErr } = await supabase.from('invoices').select('*').order('id', { ascending: false }).limit(100);
+    if (iErr) throw iErr;
+    if (iData) {
+      // Map Supabase names to local names
+      INV = iData.map(inv => ({
+        ...inv,
+        from: inv.from_party,
+        to: inv.to_party
+      }));
       saveI();
     }
 
-    saveS();
+    // 3. Fetch Logs
+    const { data: lData, error: lErr } = await supabase.from('logs').select('*').order('timestamp', { ascending: false }).limit(200);
+    if (lErr) throw lErr;
+    if (lData) {
+      S.log = lData.map(l => ({
+        id: l.id,
+        pid: l.pid,
+        product: l.product,
+        change: l.change,
+        newQty: l.new_qty,
+        note: l.note,
+        ts: new Date(l.timestamp).getTime(),
+        auto: l.is_auto
+      }));
+      saveS();
+    }
+
     lastSync = new Date();
     updateSyncBar('live');
-    toast(`✅ Synced — ${data.invoices ? data.invoices.length : 0} invoices loaded`);
+    toast(`✅ Synced with Cloud`);
     render();
 
   } catch (err) {
-    console.error('Sync error:', err);
+    console.error('Supabase Sync error:', err);
     updateSyncBar('idle');
     toast('Sync failed — using local data', 'warn');
   } finally {
@@ -385,26 +409,30 @@ function updateSyncBar(state) {
   const time = document.getElementById('sync-time');
   if (!led) return;
   led.className = `sync-led ${state === 'idle' ? 'idle' : state === 'syncing' ? 'syncing' : ''}`;
-  lbl.textContent = state === 'syncing' ? 'Syncing…' : state === 'live' ? 'Live — Google Sheets' : 'Local data only';
+  lbl.textContent = state === 'syncing' ? 'Syncing…' : state === 'live' ? 'Live — Supabase' : 'Offline Mode';
   time.textContent = lastSync ? fmtDt(lastSync) : 'Never synced';
 }
 
-// Auto-sync every 5 minutes
-setInterval(syncFromSheet, 5 * 60 * 1000);
+// Auto-sync every 2 minutes
+setInterval(syncFromSupabase, 2 * 60 * 1000);
 
 // ══════════════════════════════════════════
-//  PROCESS INVOICE FROM SHEET (auto-apply)
+//  PROCESS INVOICE (auto-apply)
 // ══════════════════════════════════════════
-function applyInvoiceToStock(inv) {
+async function applyInvoiceToStock(inv) {
   const isSale = inv.transaction_type === 'SALE';
-  (inv.products || []).forEach(item => {
+  const products = inv.products || [];
+  
+  for (const item of products) {
     const n = (item.name || "").toUpperCase().replace(/\(N\)|\(NEW\)/gi,'').trim();
     const sz = (item.size || "").toUpperCase().trim();
     let p = S.products.find(x => x.name.includes(n) && x.pack.toUpperCase().includes(sz));
     if (!p) p = S.products.find(x => x.name.includes(n));
+    
     if (p) {
       const delta = isSale ? -item.quantity : item.quantity;
       p.stock = Math.max(0, (p.stock || 0) + delta);
+      
       if (!p.batches) p.batches = [];
       if (!isSale && item.batch_no) {
         const ex = p.batches.find(b => b.batch_no === item.batch_no);
@@ -416,9 +444,22 @@ function applyInvoiceToStock(inv) {
         p.batches.forEach(b => {if(rem<=0)return;const d=Math.min(b.qty||0,rem);b.qty=(b.qty||0)-d;rem-=d;});
         p.batches = p.batches.filter(b => (b.qty||0) > 0);
       }
-      S.log.unshift({id:Date.now()+Math.random(),pid:p.id,product:p.name+(p.pack!=='—'?` · ${p.pack}`:''),change:(delta>0?'+':'')+delta,newQty:p.stock,note:`📄 ${inv.invoice_no} · ${isSale?inv.to:inv.from}`,ts:Date.now(),auto:true});
+
+      // Update Supabase Product
+      await supabase.from('products').update({ stock: p.stock, batches: p.batches }).eq('id', p.id);
+      
+      // Log it in Supabase
+      const logEntry = {
+        pid: p.id,
+        product: p.name + (p.pack !== '—' ? ` · ${p.pack}` : ''),
+        change: (delta > 0 ? '+' : '') + delta,
+        new_qty: p.stock,
+        note: `📄 ${inv.invoice_no} · ${isSale ? inv.to : inv.from}`,
+        is_auto: true
+      };
+      await supabase.from('logs').insert(logEntry);
     }
-  });
+  }
 }
 
 // ══════════════════════════════════════════
@@ -450,7 +491,7 @@ function switchTab(t){
   render();
 }
 
-function doUpdate(id,type){
+async function doUpdate(id,type){
   const qty=parseInt(document.getElementById('qty-inp-'+id)?.value);
   const note=document.getElementById('note-inp-'+id)?.value.trim();
   const party=document.getElementById('party-inp-'+id)?.value.trim();
@@ -464,22 +505,69 @@ function doUpdate(id,type){
   p.stock=Math.max(0,(p.stock||0)+delta);
   if(type==='in'&&batchNo){const ex=p.batches.find(b=>b.batch_no===batchNo);if(ex){ex.qty=(ex.qty||0)+qty;}else{p.batches.push({batch_no:batchNo,mfg:mfgDate||'',exp:expDate||'',qty});}}
   else if(type==='out'){let rem=qty;p.batches.sort((a,b)=>{const da=parseExp(a.exp),db=parseExp(b.exp);if(!da&&!db)return 0;if(!da)return 1;if(!db)return-1;return da-db;});p.batches.forEach(b=>{if(rem<=0)return;const d=Math.min(b.qty||0,rem);b.qty=(b.qty||0)-d;rem-=d;});p.batches=p.batches.filter(b=>(b.qty||0)>0);}
-  S.log.unshift({id:Date.now(),pid:id,product:p.name+(p.pack!=='—'?` · ${p.pack}`:''),change:(delta>0?'+':'')+delta,newQty:p.stock,note:(party?`${type==='in'?'From':'To'}: ${party} · `:'')+( note||(type==='in'?'Stock in':'Stock out'))+(batchNo?` · Batch ${batchNo}`:''),ts:Date.now(),auto:false});
-  if(S.log.length>500)S.log=S.log.slice(0,500);
-  saveS();expId=null;toast(`${p.name}: ${fmt(p.stock)} units`);render();
+  
+  const logEntry = {
+    pid: id,
+    product: p.name + (p.pack !== '—' ? ` · ${p.pack}` : ''),
+    change: (delta > 0 ? '+' : '') + delta,
+    new_qty: p.stock,
+    note: (party ? `${type === 'in' ? 'From' : 'To'}: ${party} · ` : '') + (note || (type === 'in' ? 'Stock in' : 'Stock out')) + (batchNo ? ` · Batch ${batchNo}` : ''),
+    is_auto: false
+  };
+
+  try {
+    // 1. Update Supabase Product
+    await supabase.from('products').update({ stock: p.stock, batches: p.batches }).eq('id', id);
+    // 2. Log it
+    await supabase.from('logs').insert(logEntry);
+    
+    toast(`${p.name}: ${fmt(p.stock)} units`);
+    saveS(); expId=null; render();
+  } catch (err) {
+    console.error('Error updating stock:', err);
+    toast('Error saving to cloud','error');
+  }
 }
 
-function saveRL(id){const v=parseInt(document.getElementById('rl-inp-'+id)?.value);if(isNaN(v)||v<0){toast('Invalid','error');return;}S.products.find(x=>x.id===id).r=v;saveS();editRL=null;toast('Saved');render();}
+async function saveRL(id){
+  const v=parseInt(document.getElementById('rl-inp-'+id)?.value);
+  if(isNaN(v)||v<0){toast('Invalid','error');return;}
+  try {
+    await supabase.from('products').update({ reorder_level: v }).eq('id', id);
+    S.products.find(x=>x.id===id).r=v;
+    saveS(); editRL=null; toast('Saved'); render();
+  } catch(e) {
+    toast('Error saving reorder level','error');
+  }
+}
 
 function openMo(){document.getElementById('modal-overlay').classList.add('open');}
 function closeMo(){document.getElementById('modal-overlay').classList.remove('open');['m-name','m-pack','m-b','m-r'].forEach(i=>document.getElementById(i).value='');}
 function closeMoBg(e){if(e.target===document.getElementById('modal-overlay'))closeMo();}
-function saveNewProd(){
+async function saveNewProd(){
   const name=document.getElementById('m-name').value.trim().toUpperCase();
   if(!name){toast('Name required','error');return;}
   const maxId=S.products.reduce((a,p)=>Math.max(a,p.id),0);
-  S.products.push({id:maxId+1,name,pack:document.getElementById('m-pack').value.trim()||'—',stock:parseInt(document.getElementById('m-b').value)||0,r:parseInt(document.getElementById('m-r').value)||300,batches:[]});
-  saveS();closeMo();toast('Product added');render();
+  const newP = {
+    id: maxId + 1,
+    name,
+    pack: document.getElementById('m-pack').value.trim() || '—',
+    stock: parseInt(document.getElementById('m-b').value) || 0,
+    reorder_level: parseInt(document.getElementById('m-r').value) || 300,
+    batches: []
+  };
+
+  try {
+    const { error } = await supabase.from('products').insert(newP);
+    if (error) throw error;
+    
+    // Update local state with same data (mapping reorder_level -> r)
+    S.products.push({ ...newP, r: newP.reorder_level });
+    saveS(); closeMo(); toast('Product added'); render();
+  } catch (e) {
+    console.error('Error adding product:', e);
+    toast('Error adding to cloud','error');
+  }
 }
 
 function updateHeader(){
@@ -582,6 +670,10 @@ function renderStock(){
 
   const chips=['all','out','crit','low','ok'].map(k=>`<button class="chip ${filt===k?'on':''}" onclick="setFilt('${k}')">${{all:'All',out:'Out',crit:'Critical',low:'Low',ok:'Healthy'}[k]}</button>`).join('');
   return`${renderSyncBar()}
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+    <div style="font-size:11px;font-weight:800;color:var(--ink3);letter-spacing:1px;text-transform:uppercase">Quick Stats</div>
+    <button onclick="exportToExcel()" style="background:var(--green-bg);color:var(--green);border:1px solid rgba(34,197,94,0.2);padding:5px 12px;border-radius:20px;font-size:9px;font-weight:800;letter-spacing:.5px;text-transform:uppercase;display:flex;align-items:center;gap:5px">📥 Export Excel</button>
+  </div>
   <div class="stats-grid">
     <div class="stat-card"><div class="stat-val" style="color:var(--green)">${ok}</div><div class="stat-lbl">Healthy</div></div>
     <div class="stat-card"><div class="stat-val" style="color:var(--yellow)">${low}</div><div class="stat-lbl">Low</div></div>
@@ -717,9 +809,38 @@ function setFilt(v){filt=v;render();}
 function startRL(id){editRL=id;render();setTimeout(()=>{const el=document.getElementById('rl-inp-'+id);if(el){el.focus();el.select();}},50);}
 function cancelRL(){editRL=null;render();}
 
+function exportToExcel() {
+  toast('Generating Excel…', 'info');
+  try {
+    const data = S.products.map(p => {
+      const e = enrich(p);
+      return {
+        'Product Name': p.name,
+        'Packing': p.pack,
+        'Current Stock': p.stock,
+        'Reorder Level': p.r,
+        'Status': sLabel(e.st),
+        'Shortfall': Math.max(0, p.r - p.stock)
+      };
+    });
+
+    const worksheet = XLSX.utils.json_to_sheet(data);
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, "Inventory");
+
+    // Style the header (Note: Basic XLSX doesn't support complex styling without extra libs, but we can name columns well)
+    const dateStr = new Date().toISOString().split('T')[0];
+    XLSX.writeFile(workbook, `Yumedics_Inventory_${dateStr}.xlsx`);
+    toast('Excel downloaded!');
+  } catch (e) {
+    console.error('Export error:', e);
+    toast('Export failed', 'error');
+  }
+}
+
 // Boot — render then sync
 switchTab('stock');
-setTimeout(syncFromSheet, 1000);
+setTimeout(syncFromSupabase, 500);
 </script>
 
 </body>
