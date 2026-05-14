@@ -275,21 +275,7 @@ const supabase = window.supabase.createClient(
   SUPABASE_ANON_KEY
 );
 // ══════════════════════════════════════════
-//  STATE
-// ══════════════════════════════════════════
-const SK='ymd_v7_final', IK='ymd_inv_v4', LK='ymd_log_v1';
-const loadS=()=>{try{const r=localStorage.getItem(SK);if(r)return JSON.parse(r);}catch(e){}return{products:JSON.parse(JSON.stringify(DEFAULTS)),log:[]};};
-const saveS=()=>localStorage.setItem(SK,JSON.stringify(S));
-const loadI=()=>{try{const r=localStorage.getItem(IK);if(r)return JSON.parse(r);}catch(e){}return[];};
-const saveI=()=>localStorage.setItem(IK,JSON.stringify(INV));
-
-let S=loadS(), INV=loadI();
-S.products.forEach(p=>{if(!p.batches)p.batches=[];if(p.b!==undefined&&p.m!==undefined){p.stock=(p.b||0)+(p.m||0);delete p.b;delete p.m;}});
-
-let tab='stock',expId=null,qLoc='b',srch='',filt='all',editRL=null,lastSync=null,syncing=false,openInvIdx=null,invSrch='';
-
-// ══════════════════════════════════════════
-//  SUPABASE SYNC & SEEDING
+//  DEFAULT PRODUCT DATA (31 SKUs)
 // ══════════════════════════════════════════
 const DEFAULTS=[
   {id:1, name:"YUMEDICS KITS",                    pack:"—",       stock:160, r:300,  batches:[]},
@@ -325,6 +311,23 @@ const DEFAULTS=[
   {id:31,name:"HAIRMEDICS BIOTIN 30 TAB",         pack:"MRP 660", stock:1056,r:1000, batches:[]},
 ];
 
+// ══════════════════════════════════════════
+//  STATE
+// ══════════════════════════════════════════
+const SK='ymd_v7_final', IK='ymd_inv_v4', LK='ymd_log_v1';
+const loadS=()=>{try{const r=localStorage.getItem(SK);if(r)return JSON.parse(r);}catch(e){}return{products:JSON.parse(JSON.stringify(DEFAULTS)),log:[]};};
+const saveS=()=>localStorage.setItem(SK,JSON.stringify(S));
+const loadI=()=>{try{const r=localStorage.getItem(IK);if(r)return JSON.parse(r);}catch(e){}return[];};
+const saveI=()=>localStorage.setItem(IK,JSON.stringify(INV));
+
+let S=loadS(), INV=loadI();
+S.products.forEach(p=>{if(!p.batches)p.batches=[];if(p.b!==undefined&&p.m!==undefined){p.stock=(p.b||0)+(p.m||0);delete p.b;delete p.m;}});
+
+let tab='stock',expId=null,qLoc='b',srch='',filt='all',editRL=null,lastSync=null,syncing=false,openInvIdx=null,invSrch='';
+
+// ══════════════════════════════════════════
+//  SUPABASE SYNC & SEEDING
+// ══════════════════════════════════════════
 async function syncFromSupabase() {
   if (syncing) return;
   syncing = true;
