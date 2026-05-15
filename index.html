@@ -6,9 +6,7 @@
 <title>Yumedics · Command Center</title>
 <link rel="preconnect" href="https://fonts.googleapis.com"/>
 <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet"/>
-<!-- Supabase SDK -->
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<!-- SheetJS for Excel export -->
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <style>
 :root{
@@ -27,11 +25,11 @@
 html,body{height:100%;background:var(--bg);font-family:'Plus Jakarta Sans',sans-serif;color:var(--ink);overscroll-behavior:none}
 input,select,button,textarea{font-family:'Plus Jakarta Sans',sans-serif}
 button{cursor:pointer}
+button:disabled{opacity:.5;cursor:not-allowed}
 ::-webkit-scrollbar{width:3px;height:3px}
 ::-webkit-scrollbar-track{background:transparent}
 ::-webkit-scrollbar-thumb{background:var(--surface3);border-radius:2px}
 
-/* ── Layout ── */
 #app{display:flex;flex-direction:column;height:100dvh;max-width:480px;margin:0 auto;position:relative}
 #header{background:rgba(10,10,15,0.98);backdrop-filter:blur(20px);border-bottom:1px solid var(--border);padding:14px 16px 0;flex-shrink:0;position:sticky;top:0;z-index:50}
 #top-row{display:flex;align-items:center;justify-content:space-between;margin-bottom:14px}
@@ -46,8 +44,8 @@ button{cursor:pointer}
 #export-btn{background:linear-gradient(135deg,var(--green),#16a34a);color:#fff;border:none;border-radius:20px;padding:5px 11px;font-size:10px;font-weight:800;letter-spacing:.5px;display:flex;align-items:center;gap:4px;transition:transform .15s,box-shadow .15s}
 #export-btn:active{transform:scale(.92)}
 #export-btn:hover{box-shadow:0 2px 12px rgba(34,197,94,0.35)}
+#export-btn.busy{background:var(--surface2);color:var(--ink3)}
 
-/* ── Tabs ── */
 #tabs{display:flex;overflow-x:auto;padding-bottom:0}
 #tabs::-webkit-scrollbar{display:none}
 .tab{border:none;background:none;padding:10px 13px;font-size:11px;font-weight:700;color:var(--ink3);border-bottom:2px solid transparent;transition:all .18s;white-space:nowrap;letter-spacing:.3px;text-transform:uppercase}
@@ -55,7 +53,6 @@ button{cursor:pointer}
 .tab-ct{margin-left:4px;background:var(--surface2);color:var(--ink3);border-radius:10px;padding:1px 6px;font-size:9px;font-weight:700}
 .tab.active .tab-ct{background:var(--gold-bg);color:var(--gold)}
 
-/* ── Content & Nav ── */
 #content{flex:1;overflow-y:auto;padding:14px 14px 100px}
 #nav{position:fixed;bottom:0;left:50%;transform:translateX(-50%);width:100%;max-width:480px;background:rgba(10,10,15,0.97);backdrop-filter:blur(20px);border-top:1px solid var(--border);display:flex;z-index:50;padding:6px 0 calc(6px + env(safe-area-inset-bottom))}
 .nb{flex:1;border:none;background:none;padding:8px 4px 6px;display:flex;flex-direction:column;align-items:center;gap:3px;font-size:8px;font-weight:700;color:var(--ink3);letter-spacing:.5px;text-transform:uppercase;transition:all .15s}
@@ -63,13 +60,11 @@ button{cursor:pointer}
 .nb.active{color:var(--gold)}
 .nb.active .nb-icon{transform:translateY(-2px)}
 
-/* ── Stats ── */
 .stats-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:14px}
 .stat-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--r2);padding:12px;display:flex;flex-direction:column;gap:4px}
 .stat-val{font-size:24px;font-weight:800;font-family:'JetBrains Mono',monospace;letter-spacing:-1px;line-height:1}
 .stat-lbl{font-size:9px;color:var(--ink3);font-weight:700;letter-spacing:.8px;text-transform:uppercase}
 
-/* ── Search ── */
 .search-wrap{position:relative;margin-bottom:10px}
 .s-icon{position:absolute;left:13px;top:50%;transform:translateY(-50%);font-size:13px;pointer-events:none;opacity:.4}
 .search-inp{width:100%;background:var(--surface);border:1px solid var(--border);border-radius:var(--r2);padding:11px 12px 11px 38px;font-size:13px;color:var(--ink);outline:none;transition:border-color .15s}
@@ -77,13 +72,11 @@ button{cursor:pointer}
 .search-inp:focus{border-color:var(--gold)}
 .clear-x{position:absolute;right:12px;top:50%;transform:translateY(-50%);background:var(--surface3);border:none;width:20px;height:20px;border-radius:50%;font-size:9px;color:var(--ink2);display:flex;align-items:center;justify-content:center}
 
-/* ── Filter Chips ── */
 .chips{display:flex;gap:6px;margin-bottom:12px;overflow-x:auto;padding-bottom:2px}
 .chips::-webkit-scrollbar{display:none}
 .chip{border:1px solid var(--border);background:var(--surface);padding:5px 12px;border-radius:20px;font-size:10px;font-weight:700;color:var(--ink3);white-space:nowrap;letter-spacing:.3px;text-transform:uppercase;transition:all .15s}
 .chip.on{border-color:var(--gold);background:var(--gold-bg);color:var(--gold)}
 
-/* ── Product Cards ── */
 .pcard{background:var(--surface);border:1px solid var(--border);border-radius:var(--r);margin-bottom:8px;overflow:hidden;transition:border-color .2s}
 .pcard.open{border-color:rgba(212,168,67,0.4)}
 .prow{display:flex;align-items:center;gap:10px;padding:14px;cursor:pointer;user-select:none}
@@ -111,7 +104,6 @@ button{cursor:pointer}
 .crit .spill{background:var(--orange-bg);color:var(--orange)}
 .out .spill{background:var(--red-bg);color:var(--red)}
 
-/* ── Expand Panel ── */
 .pexpand{padding:14px;border-top:1px solid var(--border);background:var(--bg2)}
 .sec-label{font-size:9px;font-weight:800;color:var(--ink3);letter-spacing:1.5px;text-transform:uppercase;margin-bottom:8px;margin-top:12px}
 .sec-label:first-child{margin-top:0}
@@ -136,7 +128,6 @@ button{cursor:pointer}
 .act-out{border:none;padding:13px;border-radius:var(--r2);font-size:13px;font-weight:800;background:var(--red);color:#fff;transition:opacity .15s}
 .act-in:active,.act-out:active{opacity:.75}
 
-/* ── Alert Cards ── */
 .alert-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--r);padding:14px;margin-bottom:10px}
 .alert-card.out{border-color:rgba(239,68,68,0.3)}
 .alert-card.crit{border-color:rgba(249,115,22,0.3)}
@@ -151,7 +142,6 @@ button{cursor:pointer}
 .locs1 b{color:var(--ink);font-family:'JetBrains Mono',monospace}
 .order-warn{background:var(--orange-bg);border:1px solid rgba(249,115,22,0.2);border-radius:var(--r3);padding:9px 12px;font-size:11px;color:var(--orange);font-weight:700}
 
-/* ── Sync Bar ── */
 .sync-bar{display:flex;align-items:center;gap:8px;background:var(--surface);border:1px solid var(--border);border-radius:var(--r2);padding:10px 14px;margin-bottom:12px}
 .sync-led{width:7px;height:7px;border-radius:50%;background:var(--green);animation:blink 2.5s infinite;flex-shrink:0}
 .sync-led.idle{background:var(--ink3);animation:none}
@@ -160,7 +150,6 @@ button{cursor:pointer}
 .sync-lbl{font-size:12px;font-weight:700;color:var(--ink2);flex:1}
 .sync-time{font-size:10px;color:var(--ink3);font-family:'JetBrains Mono',monospace}
 
-/* ── Invoice Cards ── */
 .inv-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--r);margin-bottom:10px;overflow:hidden;transition:border-color .2s}
 .inv-no{font-size:16px;font-weight:800;color:var(--ink);font-family:'JetBrains Mono',monospace;letter-spacing:-.5px}
 .inv-dt{font-size:10px;color:var(--ink3);margin-top:2px;font-family:'JetBrains Mono',monospace}
@@ -181,7 +170,6 @@ button{cursor:pointer}
 .qty-out{color:var(--red)}
 .qty-in{color:var(--green)}
 
-/* ── Log ── */
 .log-item{display:flex;align-items:center;gap:11px;background:var(--surface);border:1px solid var(--border);border-radius:var(--r2);padding:12px 13px;margin-bottom:7px}
 .log-ic{width:36px;height:36px;border-radius:var(--r2);display:flex;align-items:center;justify-content:center;font-size:15px;flex-shrink:0}
 .log-ic.in{background:var(--green-bg)}
@@ -194,7 +182,6 @@ button{cursor:pointer}
 .log-delta{font-size:16px;font-weight:800;font-family:'JetBrains Mono',monospace}
 .log-stock{font-size:10px;color:var(--ink3);margin-top:2px;font-family:'JetBrains Mono',monospace}
 
-/* ── Settings / Reorder ── */
 .settings-note{background:var(--yellow-bg);border:1px solid rgba(234,179,8,0.2);border-radius:var(--r2);padding:12px 14px;font-size:12px;color:var(--yellow);font-weight:600;margin-bottom:12px;line-height:1.6}
 .rl-row{background:var(--surface);border:1px solid var(--border);border-radius:var(--r2);padding:13px 14px;display:flex;align-items:center;gap:10px;margin-bottom:7px}
 .rl-dot{width:8px;height:8px;border-radius:50%;flex-shrink:0}
@@ -207,22 +194,18 @@ button{cursor:pointer}
 .rl-save{background:var(--gold);border:none;border-radius:var(--r3);padding:7px 12px;font-size:11px;font-weight:800;color:#000}
 .rl-cancel{background:var(--surface2);border:none;border-radius:var(--r3);padding:7px 8px;font-size:11px;color:var(--ink3)}
 
-/* ── Empty State ── */
 .empty{text-align:center;padding:60px 20px;color:var(--ink3)}
 .empty .ei{font-size:48px;margin-bottom:14px}
 .empty .et{font-size:16px;font-weight:800;color:var(--ink);margin-bottom:6px}
 .empty .es{font-size:13px;line-height:1.6}
 .refresh-btn{background:linear-gradient(135deg,var(--gold),var(--gold2));color:#000;border:none;padding:12px 24px;border-radius:var(--r2);font-size:13px;font-weight:800;margin-top:16px}
 
-/* ── Toast ── */
 #toast{position:fixed;bottom:85px;left:50%;transform:translateX(-50%) translateY(10px);background:var(--surface3);color:var(--ink);border:1px solid var(--border2);padding:11px 18px;border-radius:12px;font-size:12px;font-weight:700;z-index:999;white-space:nowrap;opacity:0;transition:opacity .2s,transform .2s;pointer-events:none;max-width:88vw;overflow:hidden;text-overflow:ellipsis;box-shadow:0 8px 32px rgba(0,0,0,.5)}
 #toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
 
-/* ── FAB ── */
 #fab{position:fixed;bottom:76px;right:16px;width:52px;height:52px;border-radius:50%;background:linear-gradient(135deg,var(--gold),var(--gold2));color:#000;font-size:28px;border:none;box-shadow:0 4px 20px rgba(212,168,67,0.4);display:flex;align-items:center;justify-content:center;z-index:60;transition:transform .15s}
 #fab:active{transform:scale(.9)}
 
-/* ── Modal ── */
 #modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.75);z-index:200;display:none;align-items:flex-end;justify-content:center;backdrop-filter:blur(6px)}
 #modal-overlay.open{display:flex}
 #modal{background:var(--surface);border-radius:20px 20px 0 0;padding:20px 18px 36px;width:100%;max-width:480px;max-height:90dvh;overflow-y:auto;border-top:1px solid var(--border2)}
@@ -254,7 +237,7 @@ button{cursor:pointer}
       </div>
       <div id="header-meta">
         <span id="urgent-pill" class="urgent-pill"></span>
-        <button id="export-btn" onclick="exportToExcel()" title="Download Excel"><span>📊</span><span>EXPORT</span></button>
+        <button id="export-btn" onclick="exportToExcel()" title="Sync & Download Excel"><span>📊</span><span>EXPORT</span></button>
         <span id="date-chip"></span>
       </div>
     </div>
@@ -278,7 +261,6 @@ button{cursor:pointer}
   </div>
 </div>
 
-<!-- Add Product Modal -->
 <div id="modal-overlay" onclick="closeMoBg(event)">
   <div id="modal">
     <div class="modal-handle"></div>
@@ -339,7 +321,7 @@ const DEFAULTS = [
 ];
 
 // ══════════════════════════════════════════
-//  LOCAL STORAGE — OFFLINE FALLBACK
+//  LOCAL STORAGE — OFFLINE CACHE
 // ══════════════════════════════════════════
 const SK = 'ymd_v7_final', IK = 'ymd_inv_v4';
 const loadS = () => { try { const r = localStorage.getItem(SK); if (r) return JSON.parse(r); } catch(e){} return {products:JSON.parse(JSON.stringify(DEFAULTS)), log:[]}; };
@@ -358,7 +340,7 @@ S.products.forEach(p => {
 // ══════════════════════════════════════════
 let tab = 'stock', expId = null, srch = '', filt = 'all',
     editRL = null, lastSync = null, syncing = false,
-    openInvIdx = null, invSrch = '';
+    openInvIdx = null, invSrch = '', exporting = false;
 
 // ══════════════════════════════════════════
 //  PURE HELPERS
@@ -383,65 +365,137 @@ const toast = (msg, type='ok') => {
 };
 
 // ══════════════════════════════════════════
-//  EXCEL EXPORT — 3 sheets in one .xlsx
-//  Sheet 1: Stock (with status, batches summary)
-//  Sheet 2: Invoices (one row per product line)
-//  Sheet 3: Activity Log (all movements)
+//  FETCH LIVE DATA FROM SUPABASE
+//  Single source of truth for both render & export.
+//  Returns {products, invoices, log} from Supabase
+//  (falls back to local cache if offline).
 // ══════════════════════════════════════════
-function exportToExcel() {
+async function fetchLiveData() {
+  // Run all 3 queries in parallel for speed
+  const [prodRes, invRes, logRes] = await Promise.all([
+    sb.from('products').select('*').order('id'),
+    sb.from('invoices').select('*').order('invoice_date', {ascending:false}).limit(500),
+    sb.from('stock_log').select('*').order('ts', {ascending:false}).limit(500),
+  ]);
+
+  if (prodRes.error) throw prodRes.error;
+  if (invRes.error)  throw invRes.error;
+  // log error is non-fatal — log table is optional
+
+  return {
+    products: prodRes.data || [],
+    invoices: invRes.data || [],
+    log:      logRes.error ? [] : (logRes.data || []),
+  };
+}
+
+// Merge Supabase products into local state (preserves IDs)
+function mergeProducts(prods) {
+  if (!prods?.length) return;
+  prods.forEach(row => {
+    const p = S.products.find(x => x.id === row.id);
+    if (p) {
+      p.stock   = row.stock         ?? p.stock;
+      p.r       = row.reorder_level ?? p.r;
+      p.batches = row.batches       ?? p.batches ?? [];
+      p.name    = row.name          ?? p.name;
+      p.pack    = row.pack          ?? p.pack;
+    } else {
+      S.products.push({
+        id: row.id, name: row.name, pack: row.pack || '—',
+        stock: row.stock || 0, r: row.reorder_level || 300,
+        batches: row.batches || [],
+      });
+    }
+  });
+}
+
+function mergeInvoices(invs) {
+  if (!invs?.length) return;
+  invs.forEach(inv => { if (!INV.find(i => i.invoice_no === inv.invoice_no)) INV.unshift(inv); });
+  if (INV.length > 500) INV = INV.slice(0, 500);
+}
+
+function mergeLog(logs) {
+  if (!logs?.length) return;
+  logs.forEach(e => {
+    if (!S.log.find(x => x.id === e.id)) {
+      S.log.unshift({
+        id: e.id, pid: e.pid, product: e.product, change: e.change,
+        newQty: e.new_qty, note: e.note,
+        ts: new Date(e.ts).getTime(), auto: e.auto,
+      });
+    }
+  });
+  if (S.log.length > 500) S.log = S.log.slice(0, 500);
+}
+
+// ══════════════════════════════════════════
+//  EXCEL EXPORT — Fetches LIVE data from Supabase first
+//  Fixes: was previously exporting stale cached data only
+// ══════════════════════════════════════════
+async function exportToExcel() {
+  if (exporting) return;
+  if (typeof XLSX === 'undefined') { toast('Excel library not loaded', 'error'); return; }
+
+  exporting = true;
+  const btn = document.getElementById('export-btn');
+  btn.classList.add('busy');
+  btn.disabled = true;
+  btn.innerHTML = '<span>⏳</span><span>FETCHING…</span>';
+
   try {
-    if (typeof XLSX === 'undefined') { toast('Excel library not loaded', 'error'); return; }
-    toast('Building Excel file…', 'info');
+    // ── STEP 1: Pull latest data from Supabase
+    toast('Fetching latest data from Supabase…', 'info');
+    const live = await fetchLiveData();
+
+    // ── STEP 2: Merge into local state (so UI also stays fresh)
+    mergeProducts(live.products);
+    mergeInvoices(live.invoices);
+    mergeLog(live.log);
+    saveS(); saveI();
+    lastSync = new Date();
+
+    // ── STEP 3: Build Excel from LIVE data (not cache)
+    btn.innerHTML = '<span>📦</span><span>BUILDING…</span>';
 
     const today = new Date().toISOString().slice(0, 10);
     const wb = XLSX.utils.book_new();
 
-    // ── SHEET 1: STOCK ──────────────────────
-    const stockRows = S.products.map(enrich).map(p => {
-      const batchSummary = (p.batches||[]).map(b => `${b.batch_no} (${b.qty}u, exp ${b.exp||'—'})`).join(' | ');
-      return {
-        'Product ID':       p.id,
-        'Product Name':     p.name,
-        'Pack / Size':      p.pack,
-        'Current Stock':    p.total,
-        'Reorder Level':    p.r,
-        'Shortfall':        Math.max(0, p.r - p.total),
-        'Status':           sLabel(p.st),
-        'Batches Count':    (p.batches||[]).length,
-        'Batches Detail':   batchSummary || '—',
-      };
-    });
+    // SHEET 1: STOCK (live products, joined with local state for names/pack)
+    const stockRows = S.products.map(enrich).map(p => ({
+      'Product ID':     p.id,
+      'Product Name':   p.name,
+      'Pack / Size':    p.pack,
+      'Current Stock':  p.total,
+      'Reorder Level':  p.r,
+      'Shortfall':      Math.max(0, p.r - p.total),
+      'Status':         sLabel(p.st),
+      'Batches Count':  (p.batches||[]).length,
+      'Batches Detail': (p.batches||[]).map(b => `${b.batch_no} (${b.qty}u, exp ${b.exp||'—'})`).join(' | ') || '—',
+    }));
     const ws1 = XLSX.utils.json_to_sheet(stockRows);
     ws1['!cols'] = [{wch:10},{wch:38},{wch:14},{wch:14},{wch:14},{wch:12},{wch:14},{wch:14},{wch:60}];
     XLSX.utils.book_append_sheet(wb, ws1, 'Stock');
 
-    // ── SHEET 2: INVOICES (flattened) ───────
+    // SHEET 2: INVOICES (flattened, one row per product line)
     const invoiceRows = [];
     INV.forEach(inv => {
-      if (!(inv.products||[]).length) {
+      const lines = inv.products || [];
+      if (!lines.length) {
         invoiceRows.push({
-          'Invoice No':       inv.invoice_no || '',
-          'Date':             inv.invoice_date || '',
-          'Type':             inv.transaction_type || '',
-          'From':             inv.from || '',
-          'To':               inv.to || '',
-          'Product':          '',
-          'Size':             '',
-          'Quantity':         '',
-          'Batch No':         '',
+          'Invoice No': inv.invoice_no || '', 'Date': inv.invoice_date || '',
+          'Type': inv.transaction_type || '', 'From': inv.from || '', 'To': inv.to || '',
+          'Product': '', 'Size': '', 'Quantity': '', 'Batch No': '',
         });
       } else {
-        inv.products.forEach(p => {
+        const sign = inv.transaction_type === 'SALE' ? -1 : 1;
+        lines.forEach(p => {
           invoiceRows.push({
-            'Invoice No':     inv.invoice_no || '',
-            'Date':           inv.invoice_date || '',
-            'Type':           inv.transaction_type || '',
-            'From':           inv.from || '',
-            'To':             inv.to || '',
-            'Product':        p.name || '',
-            'Size':           p.size || '',
-            'Quantity':       (inv.transaction_type==='SALE'?-1:1) * (p.quantity || 0),
-            'Batch No':       p.batch_no || '',
+            'Invoice No': inv.invoice_no || '', 'Date': inv.invoice_date || '',
+            'Type': inv.transaction_type || '', 'From': inv.from || '', 'To': inv.to || '',
+            'Product': p.name || '', 'Size': p.size || '',
+            'Quantity': sign * (p.quantity || 0), 'Batch No': p.batch_no || '',
           });
         });
       }
@@ -452,14 +506,14 @@ function exportToExcel() {
     ws2['!cols'] = [{wch:14},{wch:12},{wch:10},{wch:24},{wch:24},{wch:32},{wch:12},{wch:10},{wch:14}];
     XLSX.utils.book_append_sheet(wb, ws2, 'Invoices');
 
-    // ── SHEET 3: LOG ────────────────────────
+    // SHEET 3: ACTIVITY LOG
     const logRows = (S.log||[]).map(e => ({
-      'Date / Time':     new Date(e.ts).toLocaleString('en-IN'),
-      'Product':         e.product || '',
-      'Change':          e.change || '',
-      'New Stock':       e.newQty ?? '',
-      'Source':          e.auto ? 'Auto (Invoice)' : 'Manual',
-      'Note':            e.note || '',
+      'Date / Time': new Date(e.ts).toLocaleString('en-IN'),
+      'Product':     e.product || '',
+      'Change':      e.change || '',
+      'New Stock':   e.newQty ?? '',
+      'Source':      e.auto ? 'Auto (Invoice)' : 'Manual',
+      'Note':        e.note || '',
     }));
     const ws3 = logRows.length
       ? XLSX.utils.json_to_sheet(logRows)
@@ -467,17 +521,36 @@ function exportToExcel() {
     ws3['!cols'] = [{wch:20},{wch:36},{wch:10},{wch:12},{wch:18},{wch:50}];
     XLSX.utils.book_append_sheet(wb, ws3, 'Activity Log');
 
-    // ── WRITE FILE ──────────────────────────
+    // SHEET 4: EXPORT INFO (metadata)
+    const info = XLSX.utils.aoa_to_sheet([
+      ['Yumedics Stock Export'],
+      ['Generated At', new Date().toLocaleString('en-IN')],
+      ['Source',       'Supabase (live fetch)'],
+      ['Products',     stockRows.length],
+      ['Invoice lines', invoiceRows.length],
+      ['Log entries',  logRows.length],
+    ]);
+    info['!cols'] = [{wch:20},{wch:40}];
+    XLSX.utils.book_append_sheet(wb, info, 'Export Info');
+
+    // ── STEP 4: Download
     XLSX.writeFile(wb, `Yumedics_Export_${today}.xlsx`);
-    toast(`✅ Exported ${stockRows.length} products · ${invoiceRows.length} lines · ${logRows.length} log entries`);
+    toast(`✅ Live export: ${stockRows.length} products · ${invoiceRows.length} lines · ${logRows.length} log`);
+    render();
   } catch (err) {
     console.error('Export error:', err);
-    toast('Export failed — check console', 'error');
+    toast('Export failed: ' + (err.message || 'unknown error'), 'error');
+  } finally {
+    exporting = false;
+    btn.classList.remove('busy');
+    btn.disabled = false;
+    btn.innerHTML = '<span>📊</span><span>EXPORT</span>';
   }
 }
 
 // ══════════════════════════════════════════
-//  SUPABASE: SYNC (pull)
+//  SUPABASE: BACKGROUND SYNC
+//  Same fetchLiveData() used by export, just merges into state
 // ══════════════════════════════════════════
 async function syncFromSupabase() {
   if (syncing) return;
@@ -485,43 +558,14 @@ async function syncFromSupabase() {
   updateSyncBar('syncing');
   toast('Syncing from Supabase…', 'info');
   try {
-    const { data: prods, error: pE } = await sb.from('products').select('*').order('id');
-    if (pE) throw pE;
-    if (prods?.length) {
-      prods.forEach(row => {
-        const p = S.products.find(x => x.id === row.id);
-        if (p) {
-          p.stock   = row.stock          ?? p.stock;
-          p.r       = row.reorder_level  ?? p.r;
-          p.batches = row.batches        ?? p.batches ?? [];
-        } else {
-          S.products.push({ id:row.id, name:row.name, pack:row.pack||'—', stock:row.stock||0, r:row.reorder_level||300, batches:row.batches||[] });
-        }
-      });
-    }
-
-    const { data: invs, error: iE } = await sb.from('invoices').select('*').order('invoice_date',{ascending:false}).limit(200);
-    if (iE) throw iE;
-    if (invs?.length) {
-      invs.forEach(inv => { if (!INV.find(i => i.invoice_no === inv.invoice_no)) INV.unshift(inv); });
-      if (INV.length > 200) INV = INV.slice(0, 200);
-      saveI();
-    }
-
-    const { data: logs, error: lE } = await sb.from('stock_log').select('*').order('ts',{ascending:false}).limit(200);
-    if (!lE && logs?.length) {
-      logs.forEach(e => {
-        if (!S.log.find(x => x.id === e.id)) {
-          S.log.unshift({ id:e.id, pid:e.pid, product:e.product, change:e.change, newQty:e.new_qty, note:e.note, ts:new Date(e.ts).getTime(), auto:e.auto });
-        }
-      });
-      if (S.log.length > 500) S.log = S.log.slice(0, 500);
-    }
-
-    saveS();
+    const live = await fetchLiveData();
+    mergeProducts(live.products);
+    mergeInvoices(live.invoices);
+    mergeLog(live.log);
+    saveS(); saveI();
     lastSync = new Date();
     updateSyncBar('live');
-    toast(`✅ Synced — ${invs?.length ?? 0} invoices loaded`);
+    toast(`✅ Synced — ${live.invoices.length} invoices · ${live.products.length} products`);
     render();
   } catch (err) {
     console.error('Supabase sync error:', err);
@@ -538,7 +582,7 @@ const pushLog     = e => sb.from('stock_log').insert({ id:e.id, pid:e.pid, produ
 function updateSyncBar(state) {
   const led = document.getElementById('sync-led'), lbl = document.getElementById('sync-lbl'), time = document.getElementById('sync-time');
   if (!led) return;
-  led.className  = 'sync-led' + (state==='idle'?' idle':state==='syncing'?' syncing':'');
+  led.className   = 'sync-led' + (state==='idle'?' idle':state==='syncing'?' syncing':'');
   lbl.textContent  = {syncing:'Syncing…', live:'Live — Supabase', idle:'Local data only'}[state];
   time.textContent = lastSync ? fmtDt(lastSync) : 'Never synced';
 }
@@ -603,16 +647,10 @@ function saveNewProd() {
   pushProduct(p);
 }
 
-// ══════════════════════════════════════════
-//  MODAL
-// ══════════════════════════════════════════
 const openMo    = () => document.getElementById('modal-overlay').classList.add('open');
 const closeMo   = () => { document.getElementById('modal-overlay').classList.remove('open'); ['m-name','m-pack','m-b','m-r'].forEach(i=>document.getElementById(i).value=''); };
 const closeMoBg = e => { if (e.target===document.getElementById('modal-overlay')) closeMo(); };
 
-// ══════════════════════════════════════════
-//  HEADER
-// ══════════════════════════════════════════
 function updateHeader() {
   const en  = S.products.map(enrich);
   const urg = en.filter(p => p.st==='out'||p.st==='crit');
@@ -623,9 +661,6 @@ function updateHeader() {
   document.getElementById('date-chip').textContent = new Date().toLocaleDateString('en-IN',{day:'2-digit',month:'short',year:'numeric'});
 }
 
-// ══════════════════════════════════════════
-//  ROUTING
-// ══════════════════════════════════════════
 function switchTab(t) {
   tab = t;
   document.querySelectorAll('.tab,.nb').forEach(b => b.classList.toggle('active', b.dataset.tab===t));
@@ -638,9 +673,6 @@ function render() {
   document.getElementById('content').innerHTML = ({stock:renderStock, alerts:renderAlerts, invoices:renderInvoices, log:renderLog, settings:renderSettings}[tab])();
 }
 
-// ══════════════════════════════════════════
-//  COMPONENTS
-// ══════════════════════════════════════════
 const renderSyncBar = () => `<div class="sync-bar">
   <div class="sync-led${lastSync?'':' idle'}" id="sync-led"></div>
   <div class="sync-lbl" id="sync-lbl">${lastSync?'Live — Supabase':'Local data (tap to sync)'}</div>
