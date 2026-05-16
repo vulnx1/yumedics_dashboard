@@ -360,16 +360,45 @@ const toast = (msg, type='ok') => {
 };
 
 // ══════════════════════════════════════════
-//  NAME MATCHING — fuzzy match between sheet and DEFAULTS
+//  NAME MATCHING — fuzzy match sheet rows → DEFAULTS
+//  Strategy (in order):
+//    1. Exact name + exact size match
+//    2. Exact name + any size (for size variations)
+//    3. Sheet name contains DEFAULT name (partial)
+//    4. DEFAULT name contains sheet name (partial)
 // ══════════════════════════════════════════
-const norm = s => String(s||'').toUpperCase().replace(/\s+/g,' ').trim();
-function findProductByNameSize(name, size) {
-  const n = norm(name), sz = norm(size);
+const norm = s => String(s||'').toUpperCase()
+  .replace(/\s+/g,' ')
+  .replace(/[^A-Z0-9\s]/g,'')   // strip special chars
+  .trim();
+
+function findProductByNameSize(sheetName, sheetSize) {
+  const n  = norm(sheetName);
+  const sz = norm(sheetSize);
+
+  // 1. Exact name + exact size
   let p = S.products.find(x => norm(x.name) === n && norm(x.pack) === sz);
   if (p) return p;
-  p = S.products.find(x => norm(x.name).includes(n) || n.includes(norm(x.name)));
-  if (p && (!sz || norm(p.pack).includes(sz) || sz.includes(norm(p.pack)))) return p;
-  return null;
+
+  // 2. Exact name, any size (handles size typos)
+  p = S.products.find(x => norm(x.name) === n);
+  if (p) return p;
+
+  // 3. Sheet name is substring of DEFAULT name OR vice versa, PLUS size match
+  p = S.products.find(x => {
+    const xn = norm(x.name);
+    const nameMatch = xn.includes(n) || n.includes(xn);
+    const sizeMatch = !sz || norm(x.pack) === sz || norm(x.pack).includes(sz) || sz.includes(norm(x.pack));
+    return nameMatch && sizeMatch;
+  });
+  if (p) return p;
+
+  // 4. Name partial match only (last resort — no size constraint)
+  p = S.products.find(x => {
+    const xn = norm(x.name);
+    return xn.includes(n) || n.includes(xn);
+  });
+  return p || null;
 }
 
 // ══════════════════════════════════════════
@@ -385,29 +414,40 @@ async function fetchLiveData() {
 
 function mergeProducts(rows) {
   if (!rows?.length) return;
+
+  console.log(`[Yumedics] Merging ${rows.length} products from Google Sheets...`);
+
   rows.forEach(row => {
-    const name  = row["Product"] || row.Product || '';
-    const size  = row["Size"] || row.Size || '';
-    const stock = parseInt(row["Current Stock"] ?? row.current_stock ?? 0) || 0;
-    const reord = parseInt(row["Reorder Level"] ?? row.reorder_level ?? 30) || 30;
-    if (!name) return;
+    const name  = String(row["Product"] || row.Product || '').trim();
+    const size  = String(row["Size"]    || row.Size    || '').trim();
+    const stock = parseInt(row["Current Stock"]  ?? row.current_stock  ?? 0) || 0;
+    const reord = parseInt(row["Reorder Level"]  ?? row.reorder_level  ?? 0) || 0;
+
+    if (!name) return; // skip blank rows
 
     const existing = findProductByNameSize(name, size);
+
     if (existing) {
+      // ✅ Match found — only update stock + reorder, NEVER overwrite name/pack
+      console.log(`[Yumedics] ✅ Matched: "${name} ${size}" → "${existing.name} ${existing.pack}" | stock: ${stock}`);
       existing.stock = stock;
       existing.r     = reord;
     } else {
+      // ⚠️ No match in DEFAULTS — add as new product using SHEET values
+      console.warn(`[Yumedics] ⚠️ No match for: "${name} ${size}" — adding as new product`);
       const maxId = S.products.reduce((a,x) => Math.max(a, x.id), 0);
       S.products.push({
-        id: maxId + 1,
-        name: name.toUpperCase(),
-        pack: size || '—',
+        id:      maxId + 1,
+        name:    name.toUpperCase(),
+        pack:    size.toUpperCase() || '—',
         stock,
-        r: reord,
+        r:       reord,
         batches: [],
       });
     }
   });
+
+  console.log(`[Yumedics] Merge complete. Total products: ${S.products.length}`);
 }
 
 function mergeInvoices(rows) {
