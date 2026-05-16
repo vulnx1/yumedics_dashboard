@@ -277,55 +277,48 @@ button:disabled{opacity:.5;cursor:not-allowed}
 <script>
 // ══════════════════════════════════════════
 //  APPS SCRIPT WEB APP CONFIG
-//  Replace with your own deployed Web App URL if needed.
-//  This URL must be deployed with:
-//    Execute as: Me
-//    Who has access: Anyone
 // ══════════════════════════════════════════
 const WEB_APP_URL = "https://script.google.com/macros/s/AKfycbzeiJVNSaPpsGhziNSJ8GqQdK3tONzzT0Z4194ORxFkTm0LFebR0n2yFoA3vumzHIMtrA/exec";
 
 // ══════════════════════════════════════════
-//  DEFAULT PRODUCT DATA (31 SKUs)
-//  Used as master list. Apps Script Products sheet is matched by name+size.
+//  DEFAULT PRODUCT DATA (27 SKUs — updated from Yumedics master list)
+//  These get overridden by live Google Sheet data on every sync.
 // ══════════════════════════════════════════
 const DEFAULTS = [
-  {id:1,  name:"YUMEDICS KITS",                    pack:"—",       stock:160,  r:300,  batches:[]},
-  {id:2,  name:"PROLITE TINTED SUNSCREEN",         pack:"50GM",    stock:1368, r:1500, batches:[]},
-  {id:3,  name:"PROLITE TINTED HQ SERUM",          pack:"15ML",    stock:1107, r:1500, batches:[]},
-  {id:4,  name:"PROLITE TINTED SUNSCREEN",         pack:"50GM B",  stock:300,  r:1500, batches:[]},
-  {id:5,  name:"REVITOSIN FACE CREAM",             pack:"50GM A",  stock:3336, r:1000, batches:[]},
-  {id:6,  name:"REVITOSIN FACE CREAM",             pack:"50GM B",  stock:127,  r:1000, batches:[]},
-  {id:7,  name:"CERAMED HYDRA LOTION",             pack:"100ML",   stock:1367, r:600,  batches:[]},
-  {id:8,  name:"PROLITE HQ SERUM",                 pack:"30ML",    stock:269,  r:800,  batches:[{batch_no:"VYPHS-04",mfg:"09/2025",exp:"08/2028",qty:269}]},
-  {id:9,  name:"PLANT MAGIK HAIR VITALIZER",       pack:"100ML",   stock:614,  r:300,  batches:[]},
-  {id:10, name:"PROLITE FACE WASH",                pack:"100ML",   stock:1520, r:2000, batches:[{batch_no:"26B138",mfg:"02/2026",exp:"01/2029",qty:1520}]},
-  {id:11, name:"SCALP DOSE PDRN SHAMPOO",          pack:"200ML",   stock:424,  r:600,  batches:[]},
-  {id:12, name:"HAIRMEDICS BIOTIN 30 TAB",         pack:"MRP 669", stock:2479, r:1000, batches:[]},
-  {id:13, name:"BIOSITOL SACHET",                  pack:"—",       stock:820,  r:500,  batches:[]},
-  {id:14, name:"PROLITE CREAM",                    pack:"50GM",    stock:1612, r:300,  batches:[{batch_no:"AL0663",mfg:"03/2026",exp:"02/2028",qty:1612}]},
-  {id:15, name:"HAIRMEDICS SCALP SERUM",           pack:"50ML",    stock:2490, r:1500, batches:[]},
-  {id:16, name:"PROLITE EVEN TONE BODY LOTION",    pack:"150ML",   stock:476,  r:300,  batches:[]},
-  {id:17, name:"CERAMED ACNE GEL",                 pack:"30ML",    stock:1476, r:300,  batches:[{batch_no:"26C067",mfg:"03/2026",exp:"02/2029",qty:1476}]},
-  {id:18, name:"CERAMED BLUE SUNSCREEN",           pack:"50GM",    stock:35,   r:2000, batches:[{batch_no:"AL0690",mfg:"04/2026",exp:"03/2028",qty:35}]},
-  {id:19, name:"CERAMED HYDRA BLUE SUNSCREEN",     pack:"50GM",    stock:2184, r:2000, batches:[]},
-  {id:20, name:"AZEPRIME SERUM",                   pack:"30ML",    stock:3319, r:500,  batches:[]},
-  {id:21, name:"CERAMED HYDRA GEL",                pack:"80ML",    stock:6608, r:2000, batches:[{batch_no:"AL0700",mfg:"04/2026",exp:"03/2028",qty:6608}]},
-  {id:22, name:"CERAMED HYDRA FACE WASH",          pack:"100GM",   stock:2248, r:2000, batches:[{batch_no:"26C023",mfg:"03/2026",exp:"02/2029",qty:2248}]},
-  {id:23, name:"SCALP DOSE SHAMPOO",               pack:"150ML",   stock:2944, r:1200, batches:[]},
-  {id:24, name:"PROLITE FACE WASH",                pack:"25GM",    stock:3533, r:2000, batches:[]},
-  {id:25, name:"CERAMED HYDRA FACE WASH",          pack:"25GM",    stock:1811, r:2000, batches:[]},
-  {id:26, name:"CERAMED HYDRA BLUE SUNSCREEN",     pack:"25GM",    stock:3230, r:2000, batches:[]},
-  {id:27, name:"PROLITE TABLET",                   pack:"—",       stock:2086, r:300,  batches:[]},
-  {id:28, name:"HAIRMEDICS BIOTIN KERATIN 60 TAB", pack:"60 TAB",  stock:175,  r:400,  batches:[{batch_no:"DT1456",mfg:"02/2026",exp:"07/2027",qty:175}]},
-  {id:29, name:"GA PRIME OVERNIGHT MASK",          pack:"—",       stock:169,  r:700,  batches:[]},
-  {id:30, name:"BIOSITOL POWDER",                  pack:"—",       stock:301,  r:500,  batches:[]},
-  {id:31, name:"HAIRMEDICS BIOTIN 30 TAB",         pack:"MRP 660", stock:1056, r:1000, batches:[]},
+  {id:1,  name:"BIOSITOL SACHET",                       pack:"300GM",  stock:789,  r:300,  batches:[]},
+  {id:2,  name:"CERAMED HYDRA GEL",                     pack:"80ML",   stock:5989, r:1800, batches:[]},
+  {id:3,  name:"SCALP DOSE PDRN SHAMPOO",               pack:"200ML",  stock:155,  r:1000, batches:[]},
+  {id:4,  name:"PROLITE FACE WASH",                     pack:"100GM",  stock:268,  r:1800, batches:[]},
+  {id:5,  name:"SCALP DOSE SEBO SHAMPOO",               pack:"150ML",  stock:2803, r:1000, batches:[]},
+  {id:6,  name:"PROLITE HQ SERUM",                      pack:"30ML",   stock:134,  r:500,  batches:[]},
+  {id:7,  name:"PROLITE HQ SERUM",                      pack:"15ML",   stock:868,  r:1200, batches:[]},
+  {id:8,  name:"AZE PRIME GEL CREAM",                   pack:"30ML",   stock:2796, r:2000, batches:[]},
+  {id:9,  name:"CERAMED ACNE GEL",                      pack:"30ML",   stock:1136, r:1000, batches:[]},
+  {id:10, name:"PROLITE CREAM",                         pack:"50GM",   stock:1263, r:800,  batches:[]},
+  {id:11, name:"PROLITE EVEN TONE BODY LOTION",         pack:"150ML",  stock:2246, r:1000, batches:[]},
+  {id:12, name:"YUMEDICS BIOSITOL MANGO FLAVOUR",       pack:"200GM",  stock:0,    r:300,  batches:[]},
+  {id:13, name:"CERAMED BLUE SUNSCREEN",                pack:"50GM",   stock:1485, r:1500, batches:[]},
+  {id:14, name:"HAIRMEDICS BIOTIN KERATIN TABLETS",     pack:"30TAB",  stock:163,  r:800,  batches:[]},
+  {id:15, name:"CERAMED HYDRA FACE WASH",               pack:"100ML",  stock:1802, r:1800, batches:[]},
+  {id:16, name:"REVITOSIN FACE CREAM",                  pack:"50GM",   stock:3311, r:800,  batches:[]},
+  {id:17, name:"SCALP DOSE SHAMPOO",                    pack:"100ML",  stock:2803, r:1000, batches:[]},
+  {id:18, name:"HAIRMEDICS BIOTIN KERATIN",             pack:"60TAB",  stock:97,   r:150,  batches:[]},
+  {id:19, name:"PROLITE 30 TABLET",                     pack:"30TAB",  stock:789,  r:0,    batches:[]},
+  {id:20, name:"SCALP DOSE BIO AMPOULE PP88",           pack:"5ML",    stock:210,  r:100,  batches:[]},
+  {id:21, name:"HAIRMEDICS SCALP SERUM",                pack:"50ML",   stock:2194, r:0,    batches:[]},
+  {id:22, name:"GA PRIME GEL CREAM",                    pack:"30ML",   stock:59,   r:500,  batches:[]},
+  {id:23, name:"PROLITE PDRN SUNSCREEN",                pack:"50GM",   stock:1337, r:1000, batches:[]},
+  {id:24, name:"SCALP DOSE BIOAMPOULE PP66",            pack:"5ML",    stock:0,    r:0,    batches:[]},
+  {id:25, name:"PROLITE FACE WASH",                     pack:"25GM",   stock:0,    r:0,    batches:[]},
+  {id:26, name:"CERAMED HYDRA FACE WASH",               pack:"25GM",   stock:0,    r:0,    batches:[]},
+  {id:27, name:"CERAMED BLUE SUNSCREEN",                pack:"25GM",   stock:0,    r:0,    batches:[]},
 ];
 
 // ══════════════════════════════════════════
 //  LOCAL STORAGE — OFFLINE CACHE
+//  Bumped key version (v8) so old 31-SKU cache is replaced cleanly
 // ══════════════════════════════════════════
-const SK = 'ymd_v7_final', IK = 'ymd_inv_v4';
+const SK = 'ymd_v8_final', IK = 'ymd_inv_v4';
 const loadS = () => { try { const r = localStorage.getItem(SK); if (r) return JSON.parse(r); } catch(e){} return {products:JSON.parse(JSON.stringify(DEFAULTS)), log:[]}; };
 const saveS = () => localStorage.setItem(SK, JSON.stringify(S));
 const loadI = () => { try { const r = localStorage.getItem(IK); if (r) return JSON.parse(r); } catch(e){} return []; };
@@ -368,16 +361,12 @@ const toast = (msg, type='ok') => {
 
 // ══════════════════════════════════════════
 //  NAME MATCHING — fuzzy match between sheet and DEFAULTS
-//  Strips spaces / case / common noise so "Prolite Face Wash 100ml"
-//  matches "PROLITE FACE WASH" + "100ML"
 // ══════════════════════════════════════════
 const norm = s => String(s||'').toUpperCase().replace(/\s+/g,' ').trim();
 function findProductByNameSize(name, size) {
   const n = norm(name), sz = norm(size);
-  // Try exact match first
   let p = S.products.find(x => norm(x.name) === n && norm(x.pack) === sz);
   if (p) return p;
-  // Then contains-style match
   p = S.products.find(x => norm(x.name).includes(n) || n.includes(norm(x.name)));
   if (p && (!sz || norm(p.pack).includes(sz) || sz.includes(norm(p.pack)))) return p;
   return null;
@@ -391,12 +380,9 @@ async function fetchLiveData() {
   if (!res.ok) throw new Error(`HTTP ${res.status} from Apps Script`);
   const data = await res.json();
   if (data.error) throw new Error(data.error);
-  return data;  // { invoices: [...], products: [...], lastSync: "..." }
+  return data;
 }
 
-// ══════════════════════════════════════════
-//  MERGE FUNCTIONS — Apps Script → local state
-// ══════════════════════════════════════════
 function mergeProducts(rows) {
   if (!rows?.length) return;
   rows.forEach(row => {
@@ -406,15 +392,11 @@ function mergeProducts(rows) {
     const reord = parseInt(row["Reorder Level"] ?? row.reorder_level ?? 30) || 30;
     if (!name) return;
 
-    // Match into existing DEFAULTS by name+size
     const existing = findProductByNameSize(name, size);
     if (existing) {
       existing.stock = stock;
       existing.r     = reord;
-      // Batches in sheet is a string like "26B138 (1520), AL0663 (200)"
-      // We won't override our richer local batches; sheet is summary only.
     } else {
-      // New product discovered in sheet (not in DEFAULTS)
       const maxId = S.products.reduce((a,x) => Math.max(a, x.id), 0);
       S.products.push({
         id: maxId + 1,
@@ -430,18 +412,12 @@ function mergeProducts(rows) {
 
 function mergeInvoices(rows) {
   if (!rows?.length) return;
-  // Apps Script already groups invoices and returns newest first.
-  // Replace local INV with sheet INV so deletions in sheet reflect here.
-  // Keep any local-only invoices (none expected, but safe).
   const sheetNos = new Set(rows.map(i => i.invoice_no));
   const localOnly = INV.filter(i => !sheetNos.has(i.invoice_no));
   INV = [...rows, ...localOnly];
   if (INV.length > 500) INV = INV.slice(0, 500);
 }
 
-// ══════════════════════════════════════════
-//  SYNC FROM APPS SCRIPT
-// ══════════════════════════════════════════
 async function syncFromSheet() {
   if (syncing) return;
   syncing = true;
@@ -475,11 +451,10 @@ function updateSyncBar(state) {
   time.textContent = lastSync ? fmtDt(lastSync) : 'Never synced';
 }
 
-// Auto-sync every 5 minutes
 setInterval(syncFromSheet, 5 * 60 * 1000);
 
 // ══════════════════════════════════════════
-//  EXCEL EXPORT — Fetches LIVE Google Sheets data first
+//  EXCEL EXPORT
 // ══════════════════════════════════════════
 async function exportToExcel() {
   if (exporting) return;
@@ -492,22 +467,17 @@ async function exportToExcel() {
   btn.innerHTML = '<span>⏳</span><span>FETCHING…</span>';
 
   try {
-    // STEP 1: Pull latest from Apps Script
     toast('Fetching latest data from Google Sheets…', 'info');
     const live = await fetchLiveData();
-
-    // STEP 2: Merge into local state
     mergeProducts(live.products);
     mergeInvoices(live.invoices);
     saveS(); saveI();
     lastSync = new Date();
 
-    // STEP 3: Build Excel
     btn.innerHTML = '<span>📦</span><span>BUILDING…</span>';
     const today = new Date().toISOString().slice(0, 10);
     const wb = XLSX.utils.book_new();
 
-    // SHEET 1: STOCK
     const stockRows = S.products.map(enrich).map(p => ({
       'Product ID':     p.id,
       'Product Name':   p.name,
@@ -523,7 +493,6 @@ async function exportToExcel() {
     ws1['!cols'] = [{wch:10},{wch:38},{wch:14},{wch:14},{wch:14},{wch:12},{wch:14},{wch:14},{wch:60}];
     XLSX.utils.book_append_sheet(wb, ws1, 'Stock');
 
-    // SHEET 2: INVOICES (flattened)
     const invoiceRows = [];
     INV.forEach(inv => {
       const lines = inv.products || [];
@@ -551,7 +520,6 @@ async function exportToExcel() {
     ws2['!cols'] = [{wch:14},{wch:12},{wch:10},{wch:24},{wch:24},{wch:32},{wch:12},{wch:10},{wch:14}];
     XLSX.utils.book_append_sheet(wb, ws2, 'Invoices');
 
-    // SHEET 3: LOG (local only)
     const logRows = (S.log||[]).map(e => ({
       'Date / Time': new Date(e.ts).toLocaleString('en-IN'),
       'Product':     e.product || '',
@@ -566,7 +534,6 @@ async function exportToExcel() {
     ws3['!cols'] = [{wch:20},{wch:36},{wch:10},{wch:12},{wch:18},{wch:50}];
     XLSX.utils.book_append_sheet(wb, ws3, 'Activity Log');
 
-    // SHEET 4: METADATA
     const info = XLSX.utils.aoa_to_sheet([
       ['Yumedics Stock Export'],
       ['Generated At',  new Date().toLocaleString('en-IN')],
