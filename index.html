@@ -6,7 +6,6 @@
 <title>Yumedics · Command Center</title>
 <link rel="preconnect" href="https://fonts.googleapis.com"/>
 <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet"/>
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <style>
 :root{
@@ -277,14 +276,17 @@ button:disabled{opacity:.5;cursor:not-allowed}
 
 <script>
 // ══════════════════════════════════════════
-//  SUPABASE CONFIG
+//  APPS SCRIPT WEB APP CONFIG
+//  Replace with your own deployed Web App URL if needed.
+//  This URL must be deployed with:
+//    Execute as: Me
+//    Who has access: Anyone
 // ══════════════════════════════════════════
-const SUPABASE_URL      = "https://xsctbtlhxycpcdtosunf.supabase.co";
-const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhzY3RidGxoeHljcGNkdG9zdW5mIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg3NTk0ODksImV4cCI6MjA5NDMzNTQ4OX0._G1hQit4VMjo-w40r83TsTs6Y6TlxLM3E1VboCpwFl0";
-const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+const WEB_APP_URL = "https://script.google.com/macros/s/AKfycbzeiJVNSaPpsGhziNSJ8GqQdK3tONzzT0Z4194ORxFkTm0LFebR0n2yFoA3vumzHIMtrA/exec";
 
 // ══════════════════════════════════════════
 //  DEFAULT PRODUCT DATA (31 SKUs)
+//  Used as master list. Apps Script Products sheet is matched by name+size.
 // ══════════════════════════════════════════
 const DEFAULTS = [
   {id:1,  name:"YUMEDICS KITS",                    pack:"—",       stock:160,  r:300,  batches:[]},
@@ -352,7 +354,7 @@ const pct      = (t, r) => Math.min(100, Math.round(t / Math.max(r * 1.5, 1) * 1
 const enrich   = p => { const t = p.stock||0; const st = status(t, p.r); return {...p, total:t, st, pct:pct(t,p.r)}; };
 const fmt      = n => Number(n||0).toLocaleString('en-IN');
 const fmtDt    = ts => ts ? new Date(ts).toLocaleString('en-IN',{day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit'}) : '—';
-const parseExp = s => { if (!s) return null; const p = s.split('/'); return p.length===2 ? new Date(parseInt(p[1]), parseInt(p[0])-1, 1) : null; };
+const parseExp = s => { if (!s) return null; const p = String(s).split('/'); return p.length===2 ? new Date(parseInt(p[1]), parseInt(p[0])-1, 1) : null; };
 const daysLeft = s => { const d = parseExp(s); return d ? Math.round((d - new Date()) / 864e5) : null; };
 const fefo     = arr => [...arr].sort((a,b) => { const da=parseExp(a.exp),db=parseExp(b.exp); return (!da&&!db)?0:!da?1:!db?-1:da-db; });
 
@@ -365,74 +367,119 @@ const toast = (msg, type='ok') => {
 };
 
 // ══════════════════════════════════════════
-//  FETCH LIVE DATA FROM SUPABASE
-//  Single source of truth for both render & export.
-//  Returns {products, invoices, log} from Supabase
-//  (falls back to local cache if offline).
+//  NAME MATCHING — fuzzy match between sheet and DEFAULTS
+//  Strips spaces / case / common noise so "Prolite Face Wash 100ml"
+//  matches "PROLITE FACE WASH" + "100ML"
 // ══════════════════════════════════════════
-async function fetchLiveData() {
-  // Run all 3 queries in parallel for speed
-  const [prodRes, invRes, logRes] = await Promise.all([
-    sb.from('products').select('*').order('id'),
-    sb.from('invoices').select('*').order('invoice_date', {ascending:false}).limit(500),
-    sb.from('stock_log').select('*').order('ts', {ascending:false}).limit(500),
-  ]);
-
-  if (prodRes.error) throw prodRes.error;
-  if (invRes.error)  throw invRes.error;
-  // log error is non-fatal — log table is optional
-
-  return {
-    products: prodRes.data || [],
-    invoices: invRes.data || [],
-    log:      logRes.error ? [] : (logRes.data || []),
-  };
+const norm = s => String(s||'').toUpperCase().replace(/\s+/g,' ').trim();
+function findProductByNameSize(name, size) {
+  const n = norm(name), sz = norm(size);
+  // Try exact match first
+  let p = S.products.find(x => norm(x.name) === n && norm(x.pack) === sz);
+  if (p) return p;
+  // Then contains-style match
+  p = S.products.find(x => norm(x.name).includes(n) || n.includes(norm(x.name)));
+  if (p && (!sz || norm(p.pack).includes(sz) || sz.includes(norm(p.pack)))) return p;
+  return null;
 }
 
-// Merge Supabase products into local state (preserves IDs)
-function mergeProducts(prods) {
-  if (!prods?.length) return;
-  prods.forEach(row => {
-    const p = S.products.find(x => x.id === row.id);
-    if (p) {
-      p.stock   = row.stock         ?? p.stock;
-      p.r       = row.reorder_level ?? p.r;
-      p.batches = row.batches       ?? p.batches ?? [];
-      p.name    = row.name          ?? p.name;
-      p.pack    = row.pack          ?? p.pack;
+// ══════════════════════════════════════════
+//  FETCH LIVE DATA FROM APPS SCRIPT
+// ══════════════════════════════════════════
+async function fetchLiveData() {
+  const res = await fetch(WEB_APP_URL, { method:'GET', redirect:'follow' });
+  if (!res.ok) throw new Error(`HTTP ${res.status} from Apps Script`);
+  const data = await res.json();
+  if (data.error) throw new Error(data.error);
+  return data;  // { invoices: [...], products: [...], lastSync: "..." }
+}
+
+// ══════════════════════════════════════════
+//  MERGE FUNCTIONS — Apps Script → local state
+// ══════════════════════════════════════════
+function mergeProducts(rows) {
+  if (!rows?.length) return;
+  rows.forEach(row => {
+    const name  = row["Product"] || row.Product || '';
+    const size  = row["Size"] || row.Size || '';
+    const stock = parseInt(row["Current Stock"] ?? row.current_stock ?? 0) || 0;
+    const reord = parseInt(row["Reorder Level"] ?? row.reorder_level ?? 30) || 30;
+    if (!name) return;
+
+    // Match into existing DEFAULTS by name+size
+    const existing = findProductByNameSize(name, size);
+    if (existing) {
+      existing.stock = stock;
+      existing.r     = reord;
+      // Batches in sheet is a string like "26B138 (1520), AL0663 (200)"
+      // We won't override our richer local batches; sheet is summary only.
     } else {
+      // New product discovered in sheet (not in DEFAULTS)
+      const maxId = S.products.reduce((a,x) => Math.max(a, x.id), 0);
       S.products.push({
-        id: row.id, name: row.name, pack: row.pack || '—',
-        stock: row.stock || 0, r: row.reorder_level || 300,
-        batches: row.batches || [],
+        id: maxId + 1,
+        name: name.toUpperCase(),
+        pack: size || '—',
+        stock,
+        r: reord,
+        batches: [],
       });
     }
   });
 }
 
-function mergeInvoices(invs) {
-  if (!invs?.length) return;
-  invs.forEach(inv => { if (!INV.find(i => i.invoice_no === inv.invoice_no)) INV.unshift(inv); });
+function mergeInvoices(rows) {
+  if (!rows?.length) return;
+  // Apps Script already groups invoices and returns newest first.
+  // Replace local INV with sheet INV so deletions in sheet reflect here.
+  // Keep any local-only invoices (none expected, but safe).
+  const sheetNos = new Set(rows.map(i => i.invoice_no));
+  const localOnly = INV.filter(i => !sheetNos.has(i.invoice_no));
+  INV = [...rows, ...localOnly];
   if (INV.length > 500) INV = INV.slice(0, 500);
 }
 
-function mergeLog(logs) {
-  if (!logs?.length) return;
-  logs.forEach(e => {
-    if (!S.log.find(x => x.id === e.id)) {
-      S.log.unshift({
-        id: e.id, pid: e.pid, product: e.product, change: e.change,
-        newQty: e.new_qty, note: e.note,
-        ts: new Date(e.ts).getTime(), auto: e.auto,
-      });
-    }
-  });
-  if (S.log.length > 500) S.log = S.log.slice(0, 500);
+// ══════════════════════════════════════════
+//  SYNC FROM APPS SCRIPT
+// ══════════════════════════════════════════
+async function syncFromSheet() {
+  if (syncing) return;
+  syncing = true;
+  updateSyncBar('syncing');
+  toast('Syncing from Google Sheets…', 'info');
+  try {
+    const live = await fetchLiveData();
+    mergeProducts(live.products);
+    mergeInvoices(live.invoices);
+    saveS(); saveI();
+    lastSync = new Date();
+    updateSyncBar('live');
+    toast(`✅ Synced — ${live.invoices?.length ?? 0} invoices · ${live.products?.length ?? 0} products`);
+    render();
+  } catch (err) {
+    console.error('Sync error:', err);
+    updateSyncBar('idle');
+    toast('Sync failed — using local data: ' + (err.message || ''), 'warn');
+  } finally {
+    syncing = false;
+  }
 }
 
+function updateSyncBar(state) {
+  const led = document.getElementById('sync-led'),
+        lbl = document.getElementById('sync-lbl'),
+        time = document.getElementById('sync-time');
+  if (!led) return;
+  led.className   = 'sync-led' + (state==='idle'?' idle':state==='syncing'?' syncing':'');
+  lbl.textContent  = {syncing:'Syncing…', live:'Live — Google Sheets', idle:'Local data only'}[state];
+  time.textContent = lastSync ? fmtDt(lastSync) : 'Never synced';
+}
+
+// Auto-sync every 5 minutes
+setInterval(syncFromSheet, 5 * 60 * 1000);
+
 // ══════════════════════════════════════════
-//  EXCEL EXPORT — Fetches LIVE data from Supabase first
-//  Fixes: was previously exporting stale cached data only
+//  EXCEL EXPORT — Fetches LIVE Google Sheets data first
 // ══════════════════════════════════════════
 async function exportToExcel() {
   if (exporting) return;
@@ -445,24 +492,22 @@ async function exportToExcel() {
   btn.innerHTML = '<span>⏳</span><span>FETCHING…</span>';
 
   try {
-    // ── STEP 1: Pull latest data from Supabase
-    toast('Fetching latest data from Supabase…', 'info');
+    // STEP 1: Pull latest from Apps Script
+    toast('Fetching latest data from Google Sheets…', 'info');
     const live = await fetchLiveData();
 
-    // ── STEP 2: Merge into local state (so UI also stays fresh)
+    // STEP 2: Merge into local state
     mergeProducts(live.products);
     mergeInvoices(live.invoices);
-    mergeLog(live.log);
     saveS(); saveI();
     lastSync = new Date();
 
-    // ── STEP 3: Build Excel from LIVE data (not cache)
+    // STEP 3: Build Excel
     btn.innerHTML = '<span>📦</span><span>BUILDING…</span>';
-
     const today = new Date().toISOString().slice(0, 10);
     const wb = XLSX.utils.book_new();
 
-    // SHEET 1: STOCK (live products, joined with local state for names/pack)
+    // SHEET 1: STOCK
     const stockRows = S.products.map(enrich).map(p => ({
       'Product ID':     p.id,
       'Product Name':   p.name,
@@ -478,7 +523,7 @@ async function exportToExcel() {
     ws1['!cols'] = [{wch:10},{wch:38},{wch:14},{wch:14},{wch:14},{wch:12},{wch:14},{wch:14},{wch:60}];
     XLSX.utils.book_append_sheet(wb, ws1, 'Stock');
 
-    // SHEET 2: INVOICES (flattened, one row per product line)
+    // SHEET 2: INVOICES (flattened)
     const invoiceRows = [];
     INV.forEach(inv => {
       const lines = inv.products || [];
@@ -506,7 +551,7 @@ async function exportToExcel() {
     ws2['!cols'] = [{wch:14},{wch:12},{wch:10},{wch:24},{wch:24},{wch:32},{wch:12},{wch:10},{wch:14}];
     XLSX.utils.book_append_sheet(wb, ws2, 'Invoices');
 
-    // SHEET 3: ACTIVITY LOG
+    // SHEET 3: LOG (local only)
     const logRows = (S.log||[]).map(e => ({
       'Date / Time': new Date(e.ts).toLocaleString('en-IN'),
       'Product':     e.product || '',
@@ -521,19 +566,18 @@ async function exportToExcel() {
     ws3['!cols'] = [{wch:20},{wch:36},{wch:10},{wch:12},{wch:18},{wch:50}];
     XLSX.utils.book_append_sheet(wb, ws3, 'Activity Log');
 
-    // SHEET 4: EXPORT INFO (metadata)
+    // SHEET 4: METADATA
     const info = XLSX.utils.aoa_to_sheet([
       ['Yumedics Stock Export'],
-      ['Generated At', new Date().toLocaleString('en-IN')],
-      ['Source',       'Supabase (live fetch)'],
-      ['Products',     stockRows.length],
+      ['Generated At',  new Date().toLocaleString('en-IN')],
+      ['Source',        'Google Sheets (via Apps Script)'],
+      ['Products',      stockRows.length],
       ['Invoice lines', invoiceRows.length],
-      ['Log entries',  logRows.length],
+      ['Log entries',   logRows.length],
     ]);
     info['!cols'] = [{wch:20},{wch:40}];
     XLSX.utils.book_append_sheet(wb, info, 'Export Info');
 
-    // ── STEP 4: Download
     XLSX.writeFile(wb, `Yumedics_Export_${today}.xlsx`);
     toast(`✅ Live export: ${stockRows.length} products · ${invoiceRows.length} lines · ${logRows.length} log`);
     render();
@@ -549,50 +593,9 @@ async function exportToExcel() {
 }
 
 // ══════════════════════════════════════════
-//  SUPABASE: BACKGROUND SYNC
-//  Same fetchLiveData() used by export, just merges into state
+//  MANUAL STOCK UPDATE (local only — auto-overridden by next sync)
 // ══════════════════════════════════════════
-async function syncFromSupabase() {
-  if (syncing) return;
-  syncing = true;
-  updateSyncBar('syncing');
-  toast('Syncing from Supabase…', 'info');
-  try {
-    const live = await fetchLiveData();
-    mergeProducts(live.products);
-    mergeInvoices(live.invoices);
-    mergeLog(live.log);
-    saveS(); saveI();
-    lastSync = new Date();
-    updateSyncBar('live');
-    toast(`✅ Synced — ${live.invoices.length} invoices · ${live.products.length} products`);
-    render();
-  } catch (err) {
-    console.error('Supabase sync error:', err);
-    updateSyncBar('idle');
-    toast('Sync failed — using local data', 'warn');
-  } finally {
-    syncing = false;
-  }
-}
-
-const pushProduct = p => sb.from('products').upsert({ id:p.id, name:p.name, pack:p.pack, stock:p.stock, reorder_level:p.r, batches:p.batches }, {onConflict:'id'}).then(({error})=>{ if(error) console.warn('push product:', error); });
-const pushLog     = e => sb.from('stock_log').insert({ id:e.id, pid:e.pid, product:e.product, change:e.change, new_qty:e.newQty, note:e.note, ts:new Date(e.ts).toISOString(), auto:e.auto }).then(({error})=>{ if(error) console.warn('push log:', error); });
-
-function updateSyncBar(state) {
-  const led = document.getElementById('sync-led'), lbl = document.getElementById('sync-lbl'), time = document.getElementById('sync-time');
-  if (!led) return;
-  led.className   = 'sync-led' + (state==='idle'?' idle':state==='syncing'?' syncing':'');
-  lbl.textContent  = {syncing:'Syncing…', live:'Live — Supabase', idle:'Local data only'}[state];
-  time.textContent = lastSync ? fmtDt(lastSync) : 'Never synced';
-}
-
-setInterval(syncFromSupabase, 5 * 60 * 1000);
-
-// ══════════════════════════════════════════
-//  STOCK UPDATE
-// ══════════════════════════════════════════
-async function doUpdate(id, type) {
+function doUpdate(id, type) {
   const g    = k => document.getElementById(`${k}-${id}`)?.value.trim();
   const qty  = parseInt(g('qty-inp'));
   if (!qty || qty <= 0) { toast('Enter a valid quantity', 'error'); return; }
@@ -615,36 +618,38 @@ async function doUpdate(id, type) {
     p.batches = p.batches.filter(b => (b.qty||0) > 0);
   }
 
-  const entry = {
+  S.log.unshift({
     id: Date.now(), pid: id,
     product: p.name + (p.pack !== '—' ? ` · ${p.pack}` : ''),
     change:  (delta > 0 ? '+' : '') + delta, newQty: p.stock,
     note: (party ? `${type==='in'?'From':'To'}: ${party} · ` : '') + (note||(type==='in'?'Stock in':'Stock out')) + (batchNo?` · Batch ${batchNo}`:''),
     ts: Date.now(), auto: false,
-  };
-  S.log.unshift(entry);
+  });
   if (S.log.length > 500) S.log = S.log.slice(0, 500);
   saveS(); expId = null;
-  toast(`${p.name}: ${fmt(p.stock)} units`);
+  toast(`${p.name}: ${fmt(p.stock)} units (local)`);
   render();
-  pushProduct(p);
-  pushLog(entry);
 }
 
 function saveRL(id) {
   const v = parseInt(document.getElementById(`rl-inp-${id}`)?.value);
   if (isNaN(v) || v < 0) { toast('Invalid', 'error'); return; }
-  const p = S.products.find(x => x.id === id); p.r = v;
-  saveS(); editRL = null; toast('Saved'); render();
-  pushProduct(p);
+  S.products.find(x => x.id === id).r = v;
+  saveS(); editRL = null; toast('Saved (local)'); render();
 }
 
 function saveNewProd() {
   const name = document.getElementById('m-name').value.trim().toUpperCase();
   if (!name) { toast('Name required', 'error'); return; }
-  const p = { id: S.products.reduce((a,x)=>Math.max(a,x.id),0)+1, name, pack:document.getElementById('m-pack').value.trim()||'—', stock:parseInt(document.getElementById('m-b').value)||0, r:parseInt(document.getElementById('m-r').value)||300, batches:[] };
-  S.products.push(p); saveS(); closeMo(); toast('Product added'); render();
-  pushProduct(p);
+  S.products.push({
+    id: S.products.reduce((a,x)=>Math.max(a,x.id),0)+1,
+    name,
+    pack: document.getElementById('m-pack').value.trim() || '—',
+    stock: parseInt(document.getElementById('m-b').value) || 0,
+    r: parseInt(document.getElementById('m-r').value) || 300,
+    batches: [],
+  });
+  saveS(); closeMo(); toast('Product added (local)'); render();
 }
 
 const openMo    = () => document.getElementById('modal-overlay').classList.add('open');
@@ -675,9 +680,9 @@ function render() {
 
 const renderSyncBar = () => `<div class="sync-bar">
   <div class="sync-led${lastSync?'':' idle'}" id="sync-led"></div>
-  <div class="sync-lbl" id="sync-lbl">${lastSync?'Live — Supabase':'Local data (tap to sync)'}</div>
+  <div class="sync-lbl" id="sync-lbl">${lastSync?'Live — Google Sheets':'Local data (tap to sync)'}</div>
   <div class="sync-time" id="sync-time">${lastSync?fmtDt(lastSync):'Never'}</div>
-  <button onclick="syncFromSupabase()" style="border:none;background:var(--gold-bg);color:var(--gold);border-radius:8px;padding:4px 10px;font-size:10px;font-weight:800;margin-left:4px">SYNC</button>
+  <button onclick="syncFromSheet()" style="border:none;background:var(--gold-bg);color:var(--gold);border-radius:8px;padding:4px 10px;font-size:10px;font-weight:800;margin-left:4px">SYNC</button>
 </div>`;
 
 function renderStock() {
@@ -773,12 +778,12 @@ function renderAlerts() {
 }
 
 function renderInvoices() {
-  if (!INV.length) return `<div class="empty"><div class="ei">📄</div><div class="et">No Dispatches Yet</div><div class="es">Invoices sync automatically from Supabase.</div><button class="refresh-btn" onclick="syncFromSupabase()">🔄 Sync Now</button></div>`;
+  if (!INV.length) return `<div class="empty"><div class="ei">📄</div><div class="et">No Dispatches Yet</div><div class="es">Invoices sync automatically from Google Sheets.</div><button class="refresh-btn" onclick="syncFromSheet()">🔄 Sync Now</button></div>`;
 
   let filtered = INV;
   if (invSrch.trim()) {
     const q = invSrch.toLowerCase();
-    filtered = INV.filter(inv => ['invoice_no','from','to','invoice_date'].some(k=>(inv[k]||'').toLowerCase().includes(q)));
+    filtered = INV.filter(inv => ['invoice_no','from','to','invoice_date'].some(k=>String(inv[k]||'').toLowerCase().includes(q)));
   }
 
   let h = renderSyncBar();
@@ -833,7 +838,7 @@ function renderLog() {
 }
 
 function renderSettings() {
-  return `<div class="settings-note">⏱️ Lead time: 1.5 months. Reorder = 1.5 months sales + buffer.</div>`
+  return `<div class="settings-note">⏱️ Lead time: 1.5 months. Reorder levels are local-only (won't sync to Google Sheets).</div>`
     + S.products.map(enrich).map(p => {
         const isEd=editRL===p.id;
         return `<div class="rl-row">
@@ -862,7 +867,7 @@ const startRL    = id  => { editRL=id; render(); setTimeout(()=>{ const el=docum
 //  BOOT
 // ══════════════════════════════════════════
 switchTab('stock');
-setTimeout(syncFromSupabase, 800);
+setTimeout(syncFromSheet, 800);
 </script>
 </body>
 </html>
