@@ -318,7 +318,7 @@ const DEFAULTS = [
 //  LOCAL STORAGE — OFFLINE CACHE
 //  Bumped key version (v8) so old 31-SKU cache is replaced cleanly
 // ══════════════════════════════════════════
-const SK = 'ymd_v8_final', IK = 'ymd_inv_v4';
+const SK = 'ymd_v9_final', IK = 'ymd_inv_v4';
 const loadS = () => { try { const r = localStorage.getItem(SK); if (r) return JSON.parse(r); } catch(e){} return {products:JSON.parse(JSON.stringify(DEFAULTS)), log:[]}; };
 const saveS = () => localStorage.setItem(SK, JSON.stringify(S));
 const loadI = () => { try { const r = localStorage.getItem(IK); if (r) return JSON.parse(r); } catch(e){} return []; };
